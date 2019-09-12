@@ -26,6 +26,7 @@ import static org.testng.Assert.assertTrue;
 import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -40,7 +41,6 @@ import org.apache.pulsar.broker.loadbalance.impl.LoadManagerShared;
 import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl;
 import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerWrapper;
 import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.common.naming.NamespaceBundle;
@@ -64,7 +64,6 @@ import org.testng.annotations.Test;
 
 import com.beust.jcommander.internal.Maps;
 import com.google.common.collect.BoundType;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 import com.google.common.hash.Hashing;
@@ -119,9 +118,9 @@ public class AntiAffinityNamespaceGroupTest {
         ServiceConfiguration config1 = new ServiceConfiguration();
         config1.setLoadManagerClassName(ModularLoadManagerImpl.class.getName());
         config1.setClusterName("use");
-        config1.setWebServicePort(PRIMARY_BROKER_WEBSERVICE_PORT);
+        config1.setWebServicePort(Optional.ofNullable(PRIMARY_BROKER_WEBSERVICE_PORT));
         config1.setZookeeperServers("127.0.0.1" + ":" + ZOOKEEPER_PORT);
-        config1.setBrokerServicePort(PRIMARY_BROKER_PORT);
+        config1.setBrokerServicePort(Optional.ofNullable(PRIMARY_BROKER_PORT));
         config1.setFailureDomainsEnabled(true);
         config1.setLoadBalancerEnabled(true);
         config1.setAdvertisedAddress("localhost");
@@ -138,9 +137,9 @@ public class AntiAffinityNamespaceGroupTest {
         ServiceConfiguration config2 = new ServiceConfiguration();
         config2.setLoadManagerClassName(ModularLoadManagerImpl.class.getName());
         config2.setClusterName("use");
-        config2.setWebServicePort(SECONDARY_BROKER_WEBSERVICE_PORT);
+        config2.setWebServicePort(Optional.ofNullable(SECONDARY_BROKER_WEBSERVICE_PORT));
         config2.setZookeeperServers("127.0.0.1" + ":" + ZOOKEEPER_PORT);
-        config2.setBrokerServicePort(SECONDARY_BROKER_PORT);
+        config2.setBrokerServicePort(Optional.ofNullable(SECONDARY_BROKER_PORT));
         config2.setFailureDomainsEnabled(true);
         pulsar2 = new PulsarService(config2);
         secondaryHost = String.format("%s:%d", "localhost",
@@ -510,7 +509,7 @@ public class AntiAffinityNamespaceGroupTest {
             admin1.namespaces().setNamespaceAntiAffinityGroup(ns, namespaceAntiAffinityGroup);
         }
 
-        PulsarClient pulsarClient = PulsarClient.builder().serviceUrl(pulsar1.getWebServiceAddress()).build();
+        PulsarClient pulsarClient = PulsarClient.builder().serviceUrl(pulsar1.getSafeWebServiceAddress()).build();
         Producer<byte[]> producer = pulsarClient.newProducer().topic("persistent://" + namespace + "0/my-topic1")
                 .create();
         ModularLoadManagerImpl loadManager = (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) pulsar1

@@ -314,14 +314,14 @@ The Apache Software License, Version 2.0
  * Jackson
      - org.codehaus.jackson-jackson-core-asl-1.9.13.jar
      - org.codehaus.jackson-jackson-mapper-asl-1.9.13.jar
-     - com.fasterxml.jackson.core-jackson-annotations-2.9.7.jar
-     - com.fasterxml.jackson.core-jackson-core-2.9.7.jar
-     - com.fasterxml.jackson.core-jackson-databind-2.9.7.jar
-     - com.fasterxml.jackson.dataformat-jackson-dataformat-yaml-2.9.7.jar
-     - com.fasterxml.jackson.jaxrs-jackson-jaxrs-base-2.9.7.jar
-     - com.fasterxml.jackson.jaxrs-jackson-jaxrs-json-provider-2.9.7.jar
-     - com.fasterxml.jackson.module-jackson-module-jaxb-annotations-2.9.7.jar
-     - com.fasterxml.jackson.module-jackson-module-jsonSchema-2.9.7.jar
+     - com.fasterxml.jackson.core-jackson-annotations-2.9.9.jar
+     - com.fasterxml.jackson.core-jackson-core-2.9.9.jar
+     - com.fasterxml.jackson.core-jackson-databind-2.9.9.3.jar
+     - com.fasterxml.jackson.dataformat-jackson-dataformat-yaml-2.9.9.jar
+     - com.fasterxml.jackson.jaxrs-jackson-jaxrs-base-2.9.9.jar
+     - com.fasterxml.jackson.jaxrs-jackson-jaxrs-json-provider-2.9.9.jar
+     - com.fasterxml.jackson.module-jackson-module-jaxb-annotations-2.9.9.jar
+     - com.fasterxml.jackson.module-jackson-module-jsonSchema-2.9.9.jar
  * Caffeine -- com.github.ben-manes.caffeine-caffeine-2.6.2.jar
  * Proto Google Common Protos -- com.google.api.grpc-proto-google-common-protos-1.12.0.jar
  * Gson -- com.google.code.gson-gson-2.8.2.jar
@@ -335,15 +335,12 @@ The Apache Software License, Version 2.0
     - com.yahoo.datasketches-memory-0.8.3.jar
     - com.yahoo.datasketches-sketches-core-0.8.3.jar
  * Apache Commons
-    - commons-beanutils-commons-beanutils-1.7.0.jar
-    - commons-beanutils-commons-beanutils-core-1.8.0.jar
     - commons-cli-commons-cli-1.2.jar
     - commons-codec-commons-codec-1.10.jar
     - commons-collections-commons-collections-3.2.2.jar
-    - commons-configuration-commons-configuration-1.6.jar
-    - commons-digester-commons-digester-1.8.jar
+    - commons-configuration-commons-configuration-1.10.jar
     - commons-io-commons-io-2.5.jar
-    - commons-lang-commons-lang-2.4.jar
+    - commons-lang-commons-lang-2.6.jar
     - commons-logging-commons-logging-1.1.1.jar
     - org.apache.commons-commons-collections4-4.1.jar
     - org.apache.commons-commons-compress-1.15.jar
@@ -368,32 +365,32 @@ The Apache Software License, Version 2.0
     - org.apache.logging.log4j-log4j-web-2.10.0.jar
  * Java Native Access JNA -- net.java.dev.jna-jna-4.2.0.jar
  * BookKeeper
-    - org.apache.bookkeeper-bookkeeper-common-4.9.0.jar
-    - org.apache.bookkeeper-bookkeeper-common-allocator-4.9.0.jar
-    - org.apache.bookkeeper-bookkeeper-proto-4.9.0.jar
-    - org.apache.bookkeeper-bookkeeper-server-4.9.0.jar
-    - org.apache.bookkeeper-bookkeeper-tools-framework-4.9.0.jar
-    - org.apache.bookkeeper-circe-checksum-4.9.0.jar
-    - org.apache.bookkeeper-cpu-affinity-4.9.0.jar
-    - org.apache.bookkeeper-statelib-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-api-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-common-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-java-client-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-java-client-base-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-proto-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-server-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-service-api-4.9.0.jar
-    - org.apache.bookkeeper-stream-storage-service-impl-4.9.0.jar
-    - org.apache.bookkeeper.http-http-server-4.9.0.jar
-    - org.apache.bookkeeper.http-vertx-http-server-4.9.0.jar
-    - org.apache.bookkeeper.stats-bookkeeper-stats-api-4.9.0.jar
-    - org.apache.bookkeeper.stats-prometheus-metrics-provider-4.9.0.jar
-    - org.apache.bookkeeper.tests-stream-storage-tests-common-4.9.0.jar
-    - org.apache.distributedlog-distributedlog-common-4.9.0.jar
-    - org.apache.distributedlog-distributedlog-core-4.9.0-tests.jar
-    - org.apache.distributedlog-distributedlog-core-4.9.0.jar
-    - org.apache.distributedlog-distributedlog-protocol-4.9.0.jar
-    - org.apache.bookkeeper.stats-codahale-metrics-provider-4.9.0.jar
+    - org.apache.bookkeeper-bookkeeper-common-4.9.2.jar
+    - org.apache.bookkeeper-bookkeeper-common-allocator-4.9.2.jar
+    - org.apache.bookkeeper-bookkeeper-proto-4.9.2.jar
+    - org.apache.bookkeeper-bookkeeper-server-4.9.2.jar
+    - org.apache.bookkeeper-bookkeeper-tools-framework-4.9.2.jar
+    - org.apache.bookkeeper-circe-checksum-4.9.2.jar
+    - org.apache.bookkeeper-cpu-affinity-4.9.2.jar
+    - org.apache.bookkeeper-statelib-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-api-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-common-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-java-client-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-java-client-base-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-proto-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-server-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-service-api-4.9.2.jar
+    - org.apache.bookkeeper-stream-storage-service-impl-4.9.2.jar
+    - org.apache.bookkeeper.http-http-server-4.9.2.jar
+    - org.apache.bookkeeper.http-vertx-http-server-4.9.2.jar
+    - org.apache.bookkeeper.stats-bookkeeper-stats-api-4.9.2.jar
+    - org.apache.bookkeeper.stats-prometheus-metrics-provider-4.9.2.jar
+    - org.apache.bookkeeper.tests-stream-storage-tests-common-4.9.2.jar
+    - org.apache.distributedlog-distributedlog-common-4.9.2.jar
+    - org.apache.distributedlog-distributedlog-core-4.9.2-tests.jar
+    - org.apache.distributedlog-distributedlog-core-4.9.2.jar
+    - org.apache.distributedlog-distributedlog-protocol-4.9.2.jar
+    - org.apache.bookkeeper.stats-codahale-metrics-provider-4.9.2.jar
  * LZ4 -- org.lz4-lz4-java-1.5.0.jar
  * AsyncHttpClient
     - org.asynchttpclient-async-http-client-2.7.0.jar
@@ -424,7 +421,7 @@ The Apache Software License, Version 2.0
  * Google Error Prone Annotations - com.google.errorprone-error_prone_annotations-2.2.0.jar
  * OkHttp - com.squareup.okhttp-okhttp-2.5.0.jar
  * Okio - com.squareup.okio-okio-1.13.0.jar
- * Javassist -- org.javassist-javassist-3.21.0-GA.jar
+ * Javassist -- org.javassist-javassist-3.25.0-GA.jar
   * gRPC
     - io.grpc-grpc-all-1.18.0.jar
     - io.grpc-grpc-auth-1.18.0.jar
@@ -458,7 +455,7 @@ The Apache Software License, Version 2.0
   * Snappy Java
     - org.xerial.snappy-snappy-java-1.1.1.3.jar
   * Objenesis
-    - org.objenesis-objenesis-2.1.jar
+    - org.objenesis-objenesis-2.6.jar
   * Squareup
     - com.squareup.okhttp-logging-interceptor-2.7.5.jar
     - com.squareup.okhttp-okhttp-ws-2.7.5.jar
@@ -467,7 +464,8 @@ The Apache Software License, Version 2.0
     - io.kubernetes-client-java-api-2.0.0.jar
     - io.kubernetes-client-java-proto-2.0.0.jar
   * Joda Time
-    - joda-time-joda-time-2.9.3.jar
+    - joda-time-2.10.1.jar
+    - joda-time-joda-time-2.10.1.jar
   * Dropwizard
     - io.dropwizard.metrics-metrics-core-3.1.0.jar
     - io.dropwizard.metrics-metrics-graphite-3.1.0.jar
@@ -483,7 +481,7 @@ The Apache Software License, Version 2.0
   * JCTools - Java Concurrency Tools for the JVM
     - org.jctools-jctools-core-2.1.2.jar
   * Vertx
-    - io.vertx-vertx-auth-common-3.4.1.jar 
+    - io.vertx-vertx-auth-common-3.4.1.jar
     - io.vertx-vertx-core-3.4.1.jar
     - io.vertx-vertx-web-3.4.1.jar
 
@@ -507,7 +505,7 @@ MIT License
  * Animal Sniffer Annotations
     - org.codehaus.mojo-animal-sniffer-annotations-1.17.jar
  * The Checker Framework
-    - org.checkerframework-checker-compat-qual-2.5.2.jar 
+    - org.checkerframework-checker-compat-qual-2.5.2.jar
 
 Protocol Buffers License
  * Protocol Buffers
@@ -518,9 +516,7 @@ Protocol Buffers License
 CDDL-1.1 -- licenses/LICENSE-CDDL-1.1.txt
  * Java Annotations API
     - javax.annotation-javax.annotation-api-1.2.jar
-    - javax.activation-javax.activation-api-1.2.0.jar
     - com.sun.activation-javax.activation-1.2.0.jar
-    - javax.xml.bind-activation-1.0.2.jar
     - javax.xml.bind-jaxb-api-2.3.1.jar
  * Java Servlet API -- javax.servlet-javax.servlet-api-3.1.0.jar
  * WebSocket Server API -- javax.websocket-javax.websocket-client-api-1.0.jar

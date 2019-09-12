@@ -68,8 +68,11 @@ To install the Python bindings:
 
     while True:
         msg = consumer.receive()
-        print("Received message '%s' id='%s'", msg.data().decode('utf-8'), msg.message_id())
-        consumer.acknowledge(msg)
+        try:
+            print("Received message '%s' id='%s'", msg.data().decode('utf-8'), msg.message_id())
+            consumer.acknowledge(msg)
+        except:
+            consumer.negative_acknowledge(msg)
 
     client.close()
 
@@ -98,7 +101,7 @@ To install the Python bindings:
 
 import _pulsar
 
-from _pulsar import Result, CompressionType, ConsumerType, PartitionsRoutingMode  # noqa: F401
+from _pulsar import Result, CompressionType, ConsumerType, InitialPosition, PartitionsRoutingMode  # noqa: F401
 
 from pulsar.functions.function import Function
 from pulsar.functions.context import Context
@@ -109,17 +112,34 @@ _schema = schema
 import re
 _retype = type(re.compile('x'))
 
+import certifi
+
 
 class MessageId:
     """
     Represents a message id
     """
 
+    def __init__(self, partition=-1, ledger_id=-1, entry_id=-1, batch_index=-1):
+        self._msg_id = _pulsar.MessageId(partition, ledger_id, entry_id, batch_index)
+
     'Represents the earliest message stored in a topic'
     earliest = _pulsar.MessageId.earliest
 
     'Represents the latest message published on a topic'
     latest = _pulsar.MessageId.latest
+
+    def ledger_id(self):
+        return self._msg_id.ledger_id()
+
+    def entry_id(self):
+        return self._msg_id.entry_id()
+
+    def batch_index(self):
+        return self._msg_id.batch_index()
+
+    def partition(self):
+        return self._msg_id.partition()
 
     def serialize(self):
         """
@@ -192,6 +212,32 @@ class Message:
         Get the topic Name from which this message originated from
         """
         return self._message.topic_name()
+
+    @staticmethod
+    def _wrap(_message):
+        self = Message()
+        self._message = _message
+        return self
+
+
+class MessageBatch:
+
+    def __init__(self):
+        self._msg_batch = _pulsar.MessageBatch()
+
+    def with_message_id(self, msg_id):
+        if not isinstance(msg_id, _pulsar.MessageId):
+            if isinstance(msg_id, MessageId):
+                msg_id = msg_id._msg_id
+            else:
+                raise TypeError("unknown message id type")
+        self._msg_batch.with_message_id(msg_id)
+        return self
+
+    def parse_from(self, data, size):
+        self._msg_batch.parse_from(data, size)
+        _msgs = self._msg_batch.messages()
+        return list(map(Message._wrap, _msgs))
 
 
 class Authentication:
@@ -285,7 +331,8 @@ class Client:
                  log_conf_file_path=None,
                  use_tls=False,
                  tls_trust_certs_file_path=None,
-                 tls_allow_insecure_connection=False
+                 tls_allow_insecure_connection=False,
+                 tls_validate_hostname=False,
                  ):
         """
         Create a new Pulsar client instance.
@@ -320,10 +367,15 @@ class Client:
           is deprecated. TLS will be automatically enabled if the `serviceUrl` is
           set to `pulsar+ssl://` or `https://`
         * `tls_trust_certs_file_path`:
-          Set the path to the trusted TLS certificate file.
+          Set the path to the trusted TLS certificate file. If empty defaults to
+          certifi.
         * `tls_allow_insecure_connection`:
           Configure whether the Pulsar client accepts untrusted TLS certificates
           from the broker.
+        * `tls_validate_hostname`:
+          Configure whether the Pulsar client validates that the hostname of the
+          endpoint, matches the common name on the TLS certificate presented by
+          the endpoint.
         """
         _check_type(str, service_url, 'service_url')
         _check_type_or_none(Authentication, authentication, 'authentication')
@@ -335,6 +387,7 @@ class Client:
         _check_type(bool, use_tls, 'use_tls')
         _check_type_or_none(str, tls_trust_certs_file_path, 'tls_trust_certs_file_path')
         _check_type(bool, tls_allow_insecure_connection, 'tls_allow_insecure_connection')
+        _check_type(bool, tls_validate_hostname, 'tls_validate_hostname')
 
         conf = _pulsar.ClientConfiguration()
         if authentication:
@@ -349,7 +402,10 @@ class Client:
             conf.use_tls(True)
         if tls_trust_certs_file_path:
             conf.tls_trust_certs_file_path(tls_trust_certs_file_path)
+        else:
+            conf.tls_trust_certs_file_path(certifi.where())
         conf.tls_allow_insecure_connection(tls_allow_insecure_connection)
+        conf.tls_validate_hostname(tls_validate_hostname)
         self._client = _pulsar.Client(service_url, conf)
         self._consumers = []
 
@@ -402,9 +458,11 @@ class Client:
         * `compression_type`:
           Set the compression type for the producer. By default, message
           payloads are not compressed. Supported compression types are
-          `CompressionType.LZ4`, `CompressionType.ZLib` and `CompressionType.ZSTD`.
+          `CompressionType.LZ4`, `CompressionType.ZLib`, `CompressionType.ZSTD` and `CompressionType.SNAPPY`.
           ZSTD is supported since Pulsar 2.3. Consumers will need to be at least at that
           release in order to be able to receive messages compressed with ZSTD.
+          SNAPPY is supported since Pulsar 2.4. Consumers will need to be at least at that
+          release in order to be able to receive messages compressed with SNAPPY.
         * `max_pending_messages`:
           Set the max size of the queue holding the messages pending to receive
           an acknowledgment from the broker.
@@ -470,9 +528,11 @@ class Client:
                   consumer_name=None,
                   unacked_messages_timeout_ms=None,
                   broker_consumer_stats_cache_time_ms=30000,
+                  negative_ack_redelivery_delay_ms=60000,
                   is_read_compacted=False,
                   properties=None,
-                  pattern_auto_discovery_period=60
+                  pattern_auto_discovery_period=60,
+                  initial_position=InitialPosition.Latest
                   ):
         """
         Subscribe to the given topic and subscription combination.
@@ -528,6 +588,9 @@ class Client:
           the given value is less than 10 seconds. If a successful
           acknowledgement is not sent within the timeout, all the unacknowledged
           messages are redelivered.
+        * `negative_ack_redelivery_delay_ms`:
+           The delay after which to redeliver the messages that failed to be
+           processed (with the `consumer.negative_acknowledge()`)
         * `broker_consumer_stats_cache_time_ms`:
           Sets the time duration for which the broker-side consumer stats will
           be cached in the client.
@@ -536,6 +599,10 @@ class Client:
           can be used for identify a consumer at broker side.
         * `pattern_auto_discovery_period`:
           Periods of seconds for consumer to auto discover match topics.
+        * `initial_position`:
+          Set the initial position of a consumer  when subscribing to the topic.
+          It could be either: `InitialPosition.Earliest` or `InitialPosition.Latest`.
+          Default: `Latest`.
         """
         _check_type(str, subscription_name, 'subscription_name')
         _check_type(ConsumerType, consumer_type, 'consumer_type')
@@ -546,8 +613,11 @@ class Client:
         _check_type_or_none(str, consumer_name, 'consumer_name')
         _check_type_or_none(int, unacked_messages_timeout_ms, 'unacked_messages_timeout_ms')
         _check_type(int, broker_consumer_stats_cache_time_ms, 'broker_consumer_stats_cache_time_ms')
+        _check_type(int, negative_ack_redelivery_delay_ms, 'negative_ack_redelivery_delay_ms')
+        _check_type(int, pattern_auto_discovery_period, 'pattern_auto_discovery_period')
         _check_type(bool, is_read_compacted, 'is_read_compacted')
         _check_type_or_none(dict, properties, 'properties')
+        _check_type(InitialPosition, initial_position, 'initial_position')
 
         conf = _pulsar.ConsumerConfiguration()
         conf.consumer_type(consumer_type)
@@ -560,10 +630,13 @@ class Client:
             conf.consumer_name(consumer_name)
         if unacked_messages_timeout_ms:
             conf.unacked_messages_timeout_ms(unacked_messages_timeout_ms)
+
+        conf.negative_ack_redelivery_delay_ms(negative_ack_redelivery_delay_ms)
         conf.broker_consumer_stats_cache_time_ms(broker_consumer_stats_cache_time_ms)
         if properties:
             for k, v in properties.items():
                 conf.property(k, v)
+        conf.subscription_initial_position(initial_position)
 
         conf.schema(schema.schema_info())
 
@@ -808,6 +881,15 @@ class Producer:
                               replication_clusters, disable_replication, event_timestamp)
         self._producer.send_async(msg, callback)
 
+
+    def flush(self):
+        """
+        Flush all the messages buffered in the client and wait until all messages have been
+        successfully persisted
+        """
+        self._producer.flush()
+
+
     def close(self):
         """
         Close the producer.
@@ -931,6 +1013,26 @@ class Consumer:
             self._consumer.acknowledge_cumulative(message._message)
         else:
             self._consumer.acknowledge_cumulative(message)
+
+    def negative_acknowledge(self, message):
+        """
+        Acknowledge the failure to process a single message.
+
+        When a message is "negatively acked" it will be marked for redelivery after
+        some fixed delay. The delay is configurable when constructing the consumer
+        with {@link ConsumerConfiguration#setNegativeAckRedeliveryDelayMs}.
+
+        This call is not blocking.
+
+        **Args**
+
+        * `message`:
+          The received message or message id.
+        """
+        if isinstance(message, Message):
+            self._consumer.negative_acknowledge(message._message)
+        else:
+            self._consumer.negative_acknowledge(message)
 
     def pause_message_listener(self):
         """

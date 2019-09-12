@@ -25,9 +25,14 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+
 import io.netty.util.Timeout;
+
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +40,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+
+import org.apache.pulsar.broker.service.Topic;
+import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
@@ -43,6 +51,7 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerConsumerBase;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,6 +130,7 @@ public class TopicsConsumerImplTest extends ProducerConsumerBase {
             .receiverQueueSize(4)
             .subscribe();
         assertTrue(consumer instanceof MultiTopicsConsumerImpl);
+        assertTrue(consumer.getTopic().startsWith(MultiTopicsConsumerImpl.DUMMY_TOPIC_NAME_PREFIX));
 
         List<String> topics = ((MultiTopicsConsumerImpl<byte[]>) consumer).getPartitionedTopics();
         List<ConsumerImpl<byte[]>> consumers = ((MultiTopicsConsumerImpl) consumer).getConsumers();
@@ -129,9 +139,9 @@ public class TopicsConsumerImplTest extends ProducerConsumerBase {
         consumers.forEach(c -> log.info("consumer: {}", c.getTopic()));
 
         IntStream.range(0, 6).forEach(index ->
-            assertTrue(topics.get(index).equals(consumers.get(index).getTopic())));
+            assertEquals(consumers.get(index).getTopic(), topics.get(index)));
 
-        assertTrue(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size() == 3);
+        assertEquals(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size(), 3);
 
         consumer.unsubscribe();
         consumer.close();
@@ -515,7 +525,7 @@ public class TopicsConsumerImplTest extends ProducerConsumerBase {
 
         assertEquals(topics.size(), 3);
         assertEquals(consumers.size(), 3);
-        assertTrue(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size() == 2);
+        assertEquals(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size(), 2);
 
         // 8. re-subscribe topic3
         CompletableFuture<Void> subFuture = ((MultiTopicsConsumerImpl<byte[]>)consumer).subscribeAsync(topicName3);
@@ -546,7 +556,7 @@ public class TopicsConsumerImplTest extends ProducerConsumerBase {
 
         assertEquals(topics.size(), 6);
         assertEquals(consumers.size(), 6);
-        assertTrue(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size() == 3);
+        assertEquals(((MultiTopicsConsumerImpl<byte[]>) consumer).getTopics().size(), 3);
 
         consumer.unsubscribe();
         consumer.close();
@@ -760,4 +770,140 @@ public class TopicsConsumerImplTest extends ProducerConsumerBase {
 
         consumer.close();
     }
+
+    @Test(timeOut = testTimeout)
+    public void testDefaultBacklogTTL() throws Exception {
+
+        int defaultTTLSec = 1;
+        int totalMessages = 10;
+        this.conf.setTtlDurationDefaultInSeconds(defaultTTLSec);
+
+        final String namespace = "prop/use/expiry";
+        final String topicName = "persistent://" + namespace + "/expiry";
+        final String subName = "expiredSub";
+
+        admin.clusters().createCluster("use", new ClusterData(brokerUrl.toString()));
+
+        admin.tenants().createTenant("prop", new TenantInfo(null, Sets.newHashSet("use")));
+        admin.namespaces().createNamespace(namespace);
+
+        Consumer<byte[]> consumer = pulsarClient.newConsumer().topic(topicName).subscriptionName(subName)
+                .subscriptionType(SubscriptionType.Shared).ackTimeout(ackTimeOutMillis, TimeUnit.MILLISECONDS)
+                .subscribe();
+        consumer.close();
+
+        Producer<byte[]> producer = pulsarClient.newProducer().topic(topicName).enableBatching(false).create();
+        for (int i = 0; i < totalMessages; i++) {
+            producer.send(("" + i).getBytes());
+        }
+
+        Optional<Topic> topic = pulsar.getBrokerService().getTopic(topicName, false).get();
+        assertTrue(topic.isPresent());
+        PersistentSubscription subscription = (PersistentSubscription) topic.get().getSubscription(subName);
+
+        Thread.sleep((defaultTTLSec + 5) * 1000);
+
+        topic.get().checkMessageExpiry();
+
+        retryStrategically((test) -> subscription.getNumberOfEntriesInBacklog() == 0, 5, 200);
+
+        assertEquals(subscription.getNumberOfEntriesInBacklog(), 0);
+    }
+
+    @Test(timeOut = testTimeout)
+    public void testGetLastMessageId() throws Exception {
+        String key = "TopicGetLastMessageId";
+        final String subscriptionName = "my-ex-subscription-" + key;
+        final String messagePredicate = "my-message-" + key + "-";
+        final int totalMessages = 30;
+
+        final String topicName1 = "persistent://prop/use/ns-abc/topic-1-" + key;
+        final String topicName2 = "persistent://prop/use/ns-abc/topic-2-" + key;
+        final String topicName3 = "persistent://prop/use/ns-abc/topic-3-" + key;
+        List<String> topicNames = Lists.newArrayList(topicName1, topicName2, topicName3);
+
+        admin.tenants().createTenant("prop", new TenantInfo());
+        admin.topics().createPartitionedTopic(topicName2, 2);
+        admin.topics().createPartitionedTopic(topicName3, 3);
+
+        // 1. producer connect
+        Producer<byte[]> producer1 = pulsarClient.newProducer().topic(topicName1)
+            .enableBatching(false)
+            .messageRoutingMode(MessageRoutingMode.SinglePartition)
+            .create();
+        Producer<byte[]> producer2 = pulsarClient.newProducer().topic(topicName2)
+            .enableBatching(false)
+            .messageRoutingMode(org.apache.pulsar.client.api.MessageRoutingMode.RoundRobinPartition)
+            .create();
+        Producer<byte[]> producer3 = pulsarClient.newProducer().topic(topicName3)
+            .enableBatching(false)
+            .messageRoutingMode(org.apache.pulsar.client.api.MessageRoutingMode.RoundRobinPartition)
+            .create();
+
+        // 2. Create consumer
+        Consumer<byte[]> consumer = pulsarClient.newConsumer()
+            .topics(topicNames)
+            .subscriptionName(subscriptionName)
+            .subscriptionType(SubscriptionType.Shared)
+            .ackTimeout(ackTimeOutMillis, TimeUnit.MILLISECONDS)
+            .receiverQueueSize(4)
+            .subscribe();
+        assertTrue(consumer instanceof MultiTopicsConsumerImpl);
+
+        // 3. producer publish messages
+        for (int i = 0; i < totalMessages; i++) {
+            producer1.send((messagePredicate + "producer1-" + i).getBytes());
+            producer2.send((messagePredicate + "producer2-" + i).getBytes());
+            producer3.send((messagePredicate + "producer3-" + i).getBytes());
+        }
+
+        MessageId messageId = consumer.getLastMessageId();
+        assertTrue(messageId instanceof MultiMessageIdImpl);
+        MultiMessageIdImpl multiMessageId = (MultiMessageIdImpl) messageId;
+        Map<String, MessageId> map = multiMessageId.getMap();
+        assertEquals(map.size(), 6);
+        map.forEach((k, v) -> {
+            log.info("topic: {}, messageId:{} ", k, v.toString());
+            assertTrue(v instanceof MessageIdImpl);
+            MessageIdImpl messageId1 = (MessageIdImpl) v;
+            if (k.contains(topicName1)) {
+                assertEquals(messageId1.entryId,  totalMessages  - 1);
+            } else if (k.contains(topicName2)) {
+                assertEquals(messageId1.entryId,  totalMessages / 2  - 1);
+            } else {
+                assertEquals(messageId1.entryId,  totalMessages / 3  - 1);
+            }
+        });
+
+        for (int i = 0; i < totalMessages; i++) {
+            producer1.send((messagePredicate + "producer1-" + i).getBytes());
+            producer2.send((messagePredicate + "producer2-" + i).getBytes());
+            producer3.send((messagePredicate + "producer3-" + i).getBytes());
+        }
+
+        messageId = consumer.getLastMessageId();
+        assertTrue(messageId instanceof MultiMessageIdImpl);
+        MultiMessageIdImpl multiMessageId2 = (MultiMessageIdImpl) messageId;
+        Map<String, MessageId> map2 = multiMessageId2.getMap();
+        assertEquals(map2.size(), 6);
+        map2.forEach((k, v) -> {
+            log.info("topic: {}, messageId:{} ", k, v.toString());
+            assertTrue(v instanceof MessageIdImpl);
+            MessageIdImpl messageId1 = (MessageIdImpl) v;
+            if (k.contains(topicName1)) {
+                assertEquals(messageId1.entryId,  totalMessages * 2  - 1);
+            } else if (k.contains(topicName2)) {
+                assertEquals(messageId1.entryId,  totalMessages - 1);
+            } else {
+                assertEquals(messageId1.entryId,  totalMessages * 2 / 3  - 1);
+            }
+        });
+
+        consumer.unsubscribe();
+        consumer.close();
+        producer1.close();
+        producer2.close();
+        producer3.close();
+    }
+
 }

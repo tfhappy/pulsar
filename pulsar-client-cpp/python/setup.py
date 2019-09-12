@@ -64,11 +64,12 @@ class my_build_ext(build_ext.build_ext):
 dependencies = [
     'fastavro',
     'grpcio',
-    'protobuf',
+    'protobuf>=3.6.1',
     'six',
+    'certifi',
 
     # functions dependencies
-    "apache-bookkeeper-client",
+    "apache-bookkeeper-client>=4.9.2",
     "prometheus_client",
     "ratelimit"
 ]

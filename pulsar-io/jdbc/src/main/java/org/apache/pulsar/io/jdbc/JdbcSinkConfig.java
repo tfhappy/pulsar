@@ -43,12 +43,14 @@ public class JdbcSinkConfig implements Serializable {
     @FieldDoc(
         required = false,
         defaultValue = "",
+        sensitive = true,
         help = "Username used to connect to the database specified by `jdbcUrl`"
     )
     private String userName;
     @FieldDoc(
         required = false,
         defaultValue = "",
+        sensitive = true,
         help = "Password used to connect to the database specified by `jdbcUrl`"
     )
     private String password;
@@ -64,7 +66,19 @@ public class JdbcSinkConfig implements Serializable {
         help = "The name of the table this connector writes messages to"
     )
     private String tableName;
-
+    @FieldDoc(
+            required = false,
+            defaultValue = "",
+            help = "Fields used in update events. A comma-separated list."
+    )
+    private String nonKey;
+    // Optional
+    @FieldDoc(
+            required = false,
+            defaultValue = "",
+            help = "Fields used in where condition of update and delete Events. A comma-separated list."
+    )
+    private String key;
     // Optional
     @FieldDoc(
         required = false,

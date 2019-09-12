@@ -162,21 +162,23 @@ void MultiTopicsConsumerImpl::subscribeTopicPartitions(const Result result,
     config.setMessageListener(std::bind(&MultiTopicsConsumerImpl::messageReceived, shared_from_this(),
                                         std::placeholders::_1, std::placeholders::_2));
 
-    int numPartitions = partitionMetadata->getPartitions() >= 1 ? partitionMetadata->getPartitions() : 1;
+    int numPartitions = partitionMetadata->getPartitions();
+    int partitions = numPartitions == 0 ? 1 : numPartitions;
+
     // Apply total limit of receiver queue size across partitions
     config.setReceiverQueueSize(
         std::min(conf_.getReceiverQueueSize(),
-                 (int)(conf_.getMaxTotalReceiverQueueSizeAcrossPartitions() / numPartitions)));
+                 (int)(conf_.getMaxTotalReceiverQueueSizeAcrossPartitions() / partitions)));
 
     Lock lock(mutex_);
-    topicsPartitions_.insert(std::make_pair(topicName->toString(), numPartitions));
+    topicsPartitions_.insert(std::make_pair(topicName->toString(), partitions));
     lock.unlock();
-    numberTopicPartitions_->fetch_add(numPartitions);
+    numberTopicPartitions_->fetch_add(partitions);
 
-    std::shared_ptr<std::atomic<int>> partitionsNeedCreate =
-        std::make_shared<std::atomic<int>>(numPartitions);
+    std::shared_ptr<std::atomic<int>> partitionsNeedCreate = std::make_shared<std::atomic<int>>(partitions);
 
-    if (numPartitions == 1) {
+    // non-partitioned topic
+    if (numPartitions == 0) {
         // We don't have to add partition-n suffix
         consumer = std::make_shared<ConsumerImpl>(client_, topicName->toString(), subscriptionName_, config,
                                                   internalListenerExecutor, NonPartitioned);
@@ -243,6 +245,12 @@ void MultiTopicsConsumerImpl::unsubscribeAsync(ResultCallback callback) {
     }
     state_ = Closing;
     lock.unlock();
+
+    if (consumers_.empty()) {
+        // No need to unsubscribe, since the list matching the regex was empty
+        callback(ResultOk);
+        return;
+    }
 
     std::shared_ptr<std::atomic<int>> consumerUnsubed = std::make_shared<std::atomic<int>>(0);
 
@@ -450,6 +458,7 @@ void MultiTopicsConsumerImpl::messageReceived(Consumer consumer, const Message& 
         }
         messages_.push(msg);
         if (messageListener_) {
+            unAckedMessageTrackerPtr_->add(msg.getMessageId());
             listenerExecutor_->postWork(
                 std::bind(&MultiTopicsConsumerImpl::internalListener, shared_from_this(), consumer));
         }
@@ -561,6 +570,15 @@ void MultiTopicsConsumerImpl::acknowledgeAsync(const MessageId& msgId, ResultCal
 
 void MultiTopicsConsumerImpl::acknowledgeCumulativeAsync(const MessageId& msgId, ResultCallback callback) {
     callback(ResultOperationNotSupported);
+}
+
+void MultiTopicsConsumerImpl::negativeAcknowledge(const MessageId& msgId) {
+    auto iterator = consumers_.find(msgId.getTopicName());
+
+    if (consumers_.end() != iterator) {
+        unAckedMessageTrackerPtr_->remove(msgId);
+        iterator->second->negativeAcknowledge(msgId);
+    }
 }
 
 MultiTopicsConsumerImpl::~MultiTopicsConsumerImpl() {}

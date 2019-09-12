@@ -60,6 +60,7 @@ import org.apache.pulsar.common.policies.data.SubscribeRate;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.pulsar.common.policies.impl.NamespaceIsolationPolicies;
 import org.apache.pulsar.common.util.Codec;
+import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
 import org.apache.pulsar.zookeeper.ZooKeeperCache;
 import org.apache.pulsar.zookeeper.ZooKeeperCache.Deserializer;
@@ -315,7 +316,7 @@ public abstract class AdminResource extends PulsarWebResource {
     protected void validateBrokerName(String broker) throws MalformedURLException {
         String brokerUrl = String.format("http://%s", broker);
         String brokerUrlTls = String.format("https://%s", broker);
-        if (!brokerUrl.equals(pulsar().getWebServiceAddress())
+        if (!brokerUrl.equals(pulsar().getSafeWebServiceAddress())
                 && !brokerUrlTls.equals(pulsar().getWebServiceAddressTls())) {
             String[] parts = broker.split(":");
             checkArgument(parts.length == 2, "Invalid broker url %s", broker);
@@ -350,6 +351,36 @@ public abstract class AdminResource extends PulsarWebResource {
             log.error("[{}] Failed to get namespace policies {}", clientAppId(), namespaceName, e);
             throw new RestException(e);
         }
+
+    }
+
+    protected CompletableFuture<Policies> getNamespacePoliciesAsync(NamespaceName namespaceName) {
+        final String namespace = namespaceName.toString();
+        final String policyPath = AdminResource.path(POLICIES, namespace);
+
+        return policiesCache().getAsync(policyPath).thenCompose(policies -> {
+            if (policies.isPresent()) {
+                return pulsar()
+                        .getNamespaceService()
+                        .getNamespaceBundleFactory()
+                        .getBundlesAsync(namespaceName)
+                        .thenCompose(bundles -> {
+                    BundlesData bundleData = null;
+                    try {
+                        bundleData = NamespaceBundleFactory.getBundlesData(bundles);
+                    } catch (Exception e) {
+                        log.error("[{}] Failed to get namespace policies {}", clientAppId(), namespaceName, e);
+                        return FutureUtil.failedFuture(new RestException(e));
+                    }
+                    policies.get().bundles = bundleData != null ? bundleData : policies.get().bundles;
+                    // hydrate the namespace polices
+                    mergeNamespaceWithDefaults(policies.get(), namespace, policyPath);
+                    return CompletableFuture.completedFuture(policies.get());
+                });
+            } else {
+                return FutureUtil.failedFuture(new RestException(Status.NOT_FOUND, "Namespace does not exist"));
+            }
+        });
     }
 
     protected void mergeNamespaceWithDefaults(Policies policies, String namespace, String namespacePath) {
@@ -372,8 +403,8 @@ public abstract class AdminResource extends PulsarWebResource {
 
         final String cluster = config.getClusterName();
         // attach default dispatch rate polices
-        if (policies.clusterDispatchRate.isEmpty()) {
-            policies.clusterDispatchRate.put(cluster, dispatchRate());
+        if (policies.topicDispatchRate.isEmpty()) {
+            policies.topicDispatchRate.put(cluster, dispatchRate());
         }
 
         if (policies.subscriptionDispatchRate.isEmpty()) {
@@ -400,7 +431,7 @@ public abstract class AdminResource extends PulsarWebResource {
     protected DispatchRate subscriptionDispatchRate() {
         return new DispatchRate(
                 pulsar().getConfiguration().getDispatchThrottlingRatePerSubscriptionInMsg(),
-                pulsar().getConfiguration().getDispatchThrottlingRatePerSubscribeInByte(),
+                pulsar().getConfiguration().getDispatchThrottlingRatePerSubscriptionInByte(),
                 1
         );
     }
@@ -583,7 +614,7 @@ public abstract class AdminResource extends PulsarWebResource {
             String partitionedTopicPath = path(PARTITIONED_TOPIC_PATH_ZNODE, namespaceName.toString(), topicDomain.value());
             List<String> topics = globalZk().getChildren(partitionedTopicPath, false);
             partitionedTopics = topics.stream()
-                    .map(s -> String.format("persistent://%s/%s", namespaceName.toString(), decode(s)))
+                    .map(s -> String.format("%s://%s/%s", topicDomain.value(), namespaceName.toString(), decode(s)))
                     .collect(Collectors.toList());
         } catch (KeeperException.NoNodeException e) {
             // NoNode means there are no partitioned topics in this domain for this namespace

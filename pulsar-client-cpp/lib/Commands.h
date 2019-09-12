@@ -20,12 +20,15 @@
 #define LIB_COMMANDS_H_
 
 #include <pulsar/Authentication.h>
+#include <pulsar/defines.h>
 #include <pulsar/Message.h>
 #include <pulsar/Schema.h>
 
 #include "PulsarApi.pb.h"
 #include "SharedBuffer.h"
 #include "Utils.h"
+
+#include <set>
 
 using namespace pulsar;
 
@@ -47,7 +50,7 @@ class Commands {
     };
     enum WireFormatConstant
     {
-        MaxMessageSize = (5 * 1024 * 1024 - (10 * 1024)),
+        DefaultMaxMessageSize = (5 * 1024 * 1024 - (10 * 1024)),
         MaxFrameSize = (5 * 1024 * 1024)
     };
 
@@ -102,14 +105,15 @@ class Commands {
     static SharedBuffer newPing();
     static SharedBuffer newPong();
 
-    static SharedBuffer newRedeliverUnacknowledgedMessages(uint64_t consumerId);
+    static SharedBuffer newRedeliverUnacknowledgedMessages(uint64_t consumerId,
+                                                           const std::set<MessageId>& messageIds);
 
     static std::string messageType(proto::BaseCommand::Type type);
 
     static void initBatchMessageMetadata(const Message& msg, pulsar::proto::MessageMetadata& batchMetadata);
 
-    static void serializeSingleMessageInBatchWithPayload(const Message& msg, SharedBuffer& batchPayLoad,
-                                                         const unsigned long& maxMessageSizeInBytes);
+    static PULSAR_PUBLIC void serializeSingleMessageInBatchWithPayload(
+        const Message& msg, SharedBuffer& batchPayLoad, const unsigned long& maxMessageSizeInBytes);
 
     static Message deSerializeSingleMessageInBatch(Message& batchedMessage, int32_t batchIndex);
 

@@ -18,12 +18,11 @@
  */
 package org.apache.pulsar.client.api.v1;
 
-import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -55,7 +54,6 @@ import java.util.stream.Collectors;
 import org.apache.bookkeeper.mledger.impl.EntryCacheImpl;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
-import org.apache.pulsar.client.api.CompressionType;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.ConsumerBuilder;
 import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
@@ -73,7 +71,7 @@ import org.apache.pulsar.client.api.TypedMessageBuilder;
 import org.apache.pulsar.client.impl.ConsumerImpl;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TypedMessageBuilderImpl;
-import org.apache.pulsar.common.api.PulsarDecoder;
+import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.slf4j.Logger;
@@ -88,7 +86,9 @@ import org.testng.annotations.Test;
  * Basic tests using the deprecated client APIs from Pulsar-1.x
  */
 public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
+
     private static final Logger log = LoggerFactory.getLogger(V1_ProducerConsumerTest.class);
+    private static final long BATCHING_MAX_PUBLISH_DELAY_THRESHOLD = 1;
 
     @BeforeMethod
     @Override
@@ -161,7 +161,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         Producer<byte[]> producer = pulsarClient.newProducer()
                 .topic("persistent://my-property/use/my-ns/my-topic2")
                 .batchingMaxMessages(5)
-                .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                .batchingMaxPublishDelay(BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                 .enableBatching(batchMessageDelayMs != 0)
                 .create();
 
@@ -219,7 +219,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         Producer<byte[]> producer = pulsarClient.newProducer()
                 .topic("persistent://my-property/use/my-ns/my-topic3")
                 .batchingMaxMessages(5)
-                .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                .batchingMaxPublishDelay(BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                 .enableBatching(batchMessageDelayMs != 0)
                 .create();
 
@@ -238,7 +238,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         }
 
         log.info("Waiting for message listener to ack all messages");
-        assertEquals(latch.await(numMessages, TimeUnit.SECONDS), true, "Timed out waiting for message listener acks");
+        assertTrue(latch.await(numMessages, TimeUnit.SECONDS), "Timed out waiting for message listener acks");
         consumer.close();
         log.info("-- Exiting {} test --", methodName);
     }
@@ -255,7 +255,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         Producer<byte[]> producer = pulsarClient.newProducer()
                 .topic("persistent://my-property/use/my-ns/my-topic4")
                 .batchingMaxMessages(5)
-                .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                .batchingMaxPublishDelay(BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                 .enableBatching(batchMessageDelayMs != 0)
                 .create();
 
@@ -306,7 +306,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         Producer<byte[]> producer = pulsarClient.newProducer()
                 .topic("persistent://my-property/use/my-ns/my-topic5")
                 .batchingMaxMessages(5)
-                .batchingMaxPublishDelay(2 * batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                .batchingMaxPublishDelay(2 * BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                 .enableBatching(batchMessageDelayMs != 0)
                 .sendTimeout(1, TimeUnit.SECONDS)
                 .create();
@@ -528,7 +528,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         // publish 100 messages so that the consumers blocked on receive() will now get the messages
         Producer<byte[]> producer = pulsarClient.newProducer()
                 .topic("persistent://my-property/use/my-ns/my-topic7")
-                .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                .batchingMaxPublishDelay(BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                 .batchingMaxMessages(5)
                 .enableBatching(batchMessageDelayMs != 0)
                 .create();
@@ -607,89 +607,14 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         Producer<byte[]> producer = pulsarClient.newProducer().topic(topic).create();
 
         // Messages are allowed up to MaxMessageSize
-        producer.newMessage().value(new byte[PulsarDecoder.MaxMessageSize]);
+        producer.newMessage().value(new byte[Commands.DEFAULT_MAX_MESSAGE_SIZE]);
 
         try {
-            producer.send(new byte[PulsarDecoder.MaxMessageSize + 1]);
+            producer.send(new byte[Commands.DEFAULT_MAX_MESSAGE_SIZE + 1]);
             fail("Should have thrown exception");
         } catch (PulsarClientException.InvalidMessageException e) {
             // OK
         }
-    }
-
-    /**
-     * Verifies non-batch message size being validated after performing compression while batch-messaging validates
-     * before compression of message
-     *
-     * <pre>
-     * send msg with size > MAX_SIZE (5 MB)
-     * a. non-batch with compression: pass
-     * b. batch-msg with compression: fail
-     * c. non-batch w/o  compression: fail
-     * d. non-batch with compression, consumer consume: pass
-     * </pre>
-     *
-     * @throws Exception
-     */
-    @Test
-    public void testSendBigMessageSizeButCompressed() throws Exception {
-        log.info("-- Starting {} test --", methodName);
-
-        final String topic = "persistent://my-property/use/my-ns/bigMsg";
-
-        // (a) non-batch msg with compression
-        Producer<byte[]> producer = pulsarClient.newProducer()
-                .topic(topic)
-                .enableBatching(false)
-                .compressionType(CompressionType.LZ4)
-                .create();
-        producer.send(new byte[PulsarDecoder.MaxMessageSize + 1]);
-        producer.close();
-
-        // (b) batch-msg
-        producer = pulsarClient.newProducer()
-                .topic(topic)
-                .enableBatching(true)
-                .compressionType(CompressionType.LZ4)
-                .create();
-        try {
-            producer.send(new byte[PulsarDecoder.MaxMessageSize + 1]);
-            fail("Should have thrown exception");
-        } catch (PulsarClientException.InvalidMessageException e) {
-            // OK
-        }
-        producer.close();
-
-        // (c) non-batch msg without compression
-        producer = pulsarClient.newProducer()
-                .topic(topic)
-                .enableBatching(false)
-                .compressionType(CompressionType.NONE)
-                .create();
-        try {
-            producer.send(new byte[PulsarDecoder.MaxMessageSize + 1]);
-            fail("Should have thrown exception");
-        } catch (PulsarClientException.InvalidMessageException e) {
-            // OK
-        }
-        producer.close();
-
-        // (d) non-batch msg with compression and try to consume message
-        producer = pulsarClient.newProducer()
-                .topic(topic)
-                .enableBatching(false)
-                .compressionType(CompressionType.LZ4)
-                .create();
-        Consumer<byte[]> consumer = pulsarClient.newConsumer()
-                .topic(topic)
-                .subscriptionName("sub1")
-                .subscribe();
-        byte[] content = new byte[PulsarDecoder.MaxMessageSize + 10];
-        producer.send(content);
-        assertEquals(consumer.receive().getValue(), content);
-        producer.close();
-        consumer.close();
-
     }
 
     /**
@@ -762,9 +687,6 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         producer.send("message".getBytes());
         msg = subscriber1.receive(5, TimeUnit.SECONDS);
 
-        // Verify: cache has to be cleared as there is no message needs to be consumed by active subscriber
-        assertEquals(entryCache.getSize(), 0, 1);
-
         /************ usecase-2: *************/
         // 1.b Subscriber slower-subscriber
         Consumer<byte[]> subscriber2 = pulsarClient.newConsumer()
@@ -802,98 +724,11 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
         retryStrategically((test) -> entryCache.getSize() == 0, 5, 100);
 
         // Verify: EntryCache should be cleared
-        assertTrue(entryCache.getSize() == 0);
+        assertEquals(entryCache.getSize(), 0);
         subscriber1.close();
         log.info("-- Exiting {} test --", methodName);
     }
 
-    @Test
-    public void testDeactivatingBacklogConsumer() throws Exception {
-        log.info("-- Starting {} test --", methodName);
-
-        final long batchMessageDelayMs = 100;
-        final int receiverSize = 10;
-        final String topicName = "cache-topic";
-        final String topic = "persistent://my-property/use/my-ns/" + topicName;
-        final String sub1 = "faster-sub1";
-        final String sub2 = "slower-sub2";
-
-        // 1. Subscriber Faster subscriber: let it consume all messages immediately
-        Consumer<byte[]> subscriber1 = pulsarClient.newConsumer()
-                .topic("persistent://my-property/use/my-ns/" + topicName)
-                .subscriptionName(sub1)
-                .subscriptionType(SubscriptionType.Shared)
-                .receiverQueueSize(receiverSize)
-                .subscribe();
-        // 1.b. Subscriber Slow subscriber:
-        Consumer<byte[]> subscriber2 = pulsarClient.newConsumer()
-                .topic("persistent://my-property/use/my-ns/" + topicName)
-                .subscriptionName(sub2)
-                .subscriptionType(SubscriptionType.Shared)
-                .receiverQueueSize(receiverSize)
-                .subscribe();
-        Producer<byte[]> producer = pulsarClient.newProducer()
-                .topic(topic)
-                .enableBatching(batchMessageDelayMs != 0)
-                .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
-                .batchingMaxMessages(5)
-                .create();
-
-        PersistentTopic topicRef = (PersistentTopic) pulsar.getBrokerService().getTopicReference(topic).get();
-        ManagedLedgerImpl ledger = (ManagedLedgerImpl) topicRef.getManagedLedger();
-
-        // reflection to set/get cache-backlog fields value:
-        final long maxMessageCacheRetentionTimeMillis = 100;
-        Field backlogThresholdField = ManagedLedgerImpl.class.getDeclaredField("maxActiveCursorBacklogEntries");
-        backlogThresholdField.setAccessible(true);
-        Field field = ManagedLedgerImpl.class.getDeclaredField("maxMessageCacheRetentionTimeMillis");
-        field.setAccessible(true);
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-        field.set(ledger, maxMessageCacheRetentionTimeMillis);
-        final long maxActiveCursorBacklogEntries = (long) backlogThresholdField.get(ledger);
-
-        Message<byte[]>msg = null;
-        final int totalMsgs = (int) maxActiveCursorBacklogEntries + receiverSize + 1;
-        // 2. Produce messages
-        for (int i = 0; i < totalMsgs; i++) {
-            String message = "my-message-" + i;
-            producer.send(message.getBytes());
-        }
-        // 3. Consume messages: at Faster subscriber
-        for (int i = 0; i < totalMsgs; i++) {
-            msg = subscriber1.receive(100, TimeUnit.MILLISECONDS);
-            subscriber1.acknowledge(msg);
-        }
-
-        // wait : so message can be eligible to to be evict from cache
-        Thread.sleep(maxMessageCacheRetentionTimeMillis);
-
-        // 4. deactivate subscriber which has built the backlog
-        ledger.checkBackloggedCursors();
-        Thread.sleep(100);
-
-        // 5. verify: active subscribers
-        Set<String> activeSubscriber = Sets.newHashSet();
-        ledger.getActiveCursors().forEach(c -> activeSubscriber.add(c.getName()));
-        assertTrue(activeSubscriber.contains(sub1));
-        assertFalse(activeSubscriber.contains(sub2));
-
-        // 6. consume messages : at slower subscriber
-        for (int i = 0; i < totalMsgs; i++) {
-            msg = subscriber2.receive(100, TimeUnit.MILLISECONDS);
-            subscriber2.acknowledge(msg);
-        }
-
-        ledger.checkBackloggedCursors();
-
-        activeSubscriber.clear();
-        ledger.getActiveCursors().forEach(c -> activeSubscriber.add(c.getName()));
-
-        assertTrue(activeSubscriber.contains(sub1));
-        assertTrue(activeSubscriber.contains(sub2));
-    }
 
     @Test(timeOut = 2000)
     public void testAsyncProducerAndConsumer() throws Exception {
@@ -1045,14 +880,14 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
             consumerMsgSet2.add(msg);
         }
 
-        consumerMsgSet1.stream().forEach(m -> {
+        consumerMsgSet1.forEach(m -> {
             try {
                 consumer2.acknowledge(m);
             } catch (PulsarClientException e) {
                 fail();
             }
         });
-        consumerMsgSet2.stream().forEach(m -> {
+        consumerMsgSet2.forEach(m -> {
             try {
                 consumer1.acknowledge(m);
             } catch (PulsarClientException e) {
@@ -1270,8 +1105,6 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
     /**
      * Verify: Consumer1 which doesn't send ack will not impact Consumer2 which sends ack for consumed message.
      *
-     *
-     * @param batchMessageDelayMs
      * @throws Exception
      */
     @Test
@@ -1531,7 +1364,7 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
             Producer<byte[]> producer = pulsarClient.newProducer()
                     .topic("persistent://my-property/use/my-ns/unacked-topic")
                     .enableBatching(batchMessageDelayMs != 0)
-                    .batchingMaxPublishDelay(batchMessageDelayMs, TimeUnit.MILLISECONDS)
+                    .batchingMaxPublishDelay(BATCHING_MAX_PUBLISH_DELAY_THRESHOLD, TimeUnit.MILLISECONDS)
                     .batchingMaxMessages(5)
                     .create();
 
@@ -1597,8 +1430,6 @@ public class V1_ProducerConsumerTest extends V1_ProducerConsumerBase {
     /**
      * Verify: Consumer2 sends ack of Consumer1 and consumer1 should be unblock if it is blocked due to unack-messages
      *
-     *
-     * @param batchMessageDelayMs
      * @throws Exception
      */
     @Test

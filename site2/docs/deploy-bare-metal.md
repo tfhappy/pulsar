@@ -43,6 +43,8 @@ To run Pulsar on bare metal, you are recommended to have:
 > However if you don't have enough machines, or are trying out Pulsar in cluster mode (and expand the cluster later),
 > you can even deploy Pulsar in one node, where it will run zookeeper, bookie and broker in same machine.
 
+> If you don't have a DNS server, you can use multi-host in service URL instead.
+
 Each machine in your cluster will need to have [Java 8](http://www.oracle.com/technetwork/java/javase/downloads/index.html) or higher installed.
 
 Here's a diagram showing the basic setup:
@@ -117,27 +119,18 @@ one of the following ways:
 * using [wget](https://www.gnu.org/software/wget):
 
   ```shell
-  $ wget pulsar:connector_release_url
+  $ wget pulsar:connector_release_url/{connector}-{{pulsar:version}}.nar
   ```
 
-Once the tarball is downloaded, in the pulsar directory, untar the io-connectors package and copy the connectors as `connectors`
-in the pulsar directory:
+Once the nar file is downloaded, copy the file to directory `connectors` in the pulsar directory, 
+for example, if the connector file `pulsar-io-aerospike-{{pulsar:version}}.nar` is downloaded:
 
 ```bash
-$ tar xvfz apache-pulsar-io-connectors-{{pulsar:version}}-bin.tar.gz
-
-// you will find a directory named `apache-pulsar-io-connectors-{{pulsar:version}}` in the pulsar directory
-// then copy the connectors
-
-$ mv apache-pulsar-io-connectors-{{pulsar:version}}/connectors connectors
+$ mkdir connectors
+$ mv pulsar-io-aerospike-{{pulsar:version}}.nar connectors
 
 $ ls connectors
 pulsar-io-aerospike-{{pulsar:version}}.nar
-pulsar-io-cassandra-{{pulsar:version}}.nar
-pulsar-io-kafka-{{pulsar:version}}.nar
-pulsar-io-kinesis-{{pulsar:version}}.nar
-pulsar-io-rabbitmq-{{pulsar:version}}.nar
-pulsar-io-twitter-{{pulsar:version}}.nar
 ...
 ```
 
@@ -253,6 +246,15 @@ Flag | Description
 `--broker-service-url` | A broker service URL enabling interaction with the brokers in the cluster. This URL should use the same DNS name as the web service URL but should use the `pulsar` scheme instead. The default port is 6650 (we don't recommend using a different port).
 `--broker-service-url-tls` | If you're using [TLS](security-tls-transport.md), you'll also need to specify a TLS web service URL for the cluster as well as a TLS broker service URL for the brokers in the cluster. The default port is 6651 (we don't recommend using a different port).
 
+> If you don't have a DNS server, you can use multi-host in service URL with the following settings:
+>
+> ```properties
+> --web-service-url http://host1:8080,host2:8080,host3:8080 \
+> --web-service-url-tls https://host1:8443,host2:8443,host3:8443 \
+> --broker-service-url pulsar://host1:6650,host2:6650,host3:6650 \
+> --broker-service-url-tls pulsar+ssl://host1:6651,host2:6651,host3:6651
+> ```
+
 ## Deploying a BookKeeper cluster
 
 [BookKeeper](https://bookkeeper.apache.org) handles all persistent data storage in Pulsar. You will need to deploy a cluster of BookKeeper bookies to use Pulsar. We recommend running a **3-bookie BookKeeper cluster**.
@@ -312,17 +314,26 @@ Pulsar brokers are the last thing you need to deploy in your Pulsar cluster. Bro
 
 ### Configuring Brokers
 
-The most important element of broker configuration is ensuring that that each broker is aware of the ZooKeeper cluster that you've deployed. Make sure that the [`zookeeperServers`](reference-configuration.md#broker-zookeeperServers) and [`configurationStoreServers`](reference-configuration.md#broker-configurationStoreServers) parameters. In this case, since we only have 1 cluster and no configuration store setup, the `configurationStoreServers` will point to the same `zookeeperServers`.
+The most important element of broker configuration is ensuring that each broker is aware of the ZooKeeper cluster that you've deployed. Make sure that the [`zookeeperServers`](reference-configuration.md#broker-zookeeperServers) and [`configurationStoreServers`](reference-configuration.md#broker-configurationStoreServers) parameters. In this case, since we only have 1 cluster and no configuration store setup, the `configurationStoreServers` will point to the same `zookeeperServers`.
 
 ```properties
 zookeeperServers=zk1.us-west.example.com:2181,zk2.us-west.example.com:2181,zk3.us-west.example.com:2181
 configurationStoreServers=zk1.us-west.example.com:2181,zk2.us-west.example.com:2181,zk3.us-west.example.com:2181
 ```
 
-You also need to specify the cluster name (matching the name that you provided when [initializing the cluster's metadata](#initializing-cluster-metadata):
+You also need to specify the cluster name (matching the name that you provided when [initializing the cluster's metadata](#initializing-cluster-metadata)):
 
 ```properties
 clusterName=pulsar-cluster-1
+```
+
+In addition, you need to match the broker and web service ports provided when initializing the cluster's metadata (especially when using a different port from default):
+
+```properties
+brokerServicePort=6650
+brokerServicePortTls=6651
+webServicePort=8080
+webServicePortTls=8443
 ```
 
 > If you deploy Pulsar in a one-node cluster, you should update the replication settings in `conf/broker.conf` to `1`
@@ -342,7 +353,7 @@ clusterName=pulsar-cluster-1
 
 If you want to enable [Pulsar Functions](functions-overview.md), you can follow the instructions as below:
 
-1. Edit `conf/broker.conf` to enable function worker, by setting `functionsWorkerEnabled` to `true`.
+1. Edit `conf/broker.conf` to enable functions worker, by setting `functionsWorkerEnabled` to `true`.
 
     ```conf
     functionsWorkerEnabled=true
@@ -353,6 +364,8 @@ If you want to enable [Pulsar Functions](functions-overview.md), you can follow 
     ```conf
     pulsarFunctionsCluster: pulsar-cluster-1
     ```
+
+If you would like to learn more options about deploying functions worker, please checkout [Deploy and manage functions worker](functions-worker.md).
 
 ### Starting Brokers
 
@@ -379,9 +392,16 @@ Once your Pulsar cluster is up and running, you should be able to connect with i
 To use the `pulsar-client` tool, first modify the client configuration file in [`conf/client.conf`](reference-configuration.md#client) in your binary package. You'll need to change the values for `webServiceUrl` and `brokerServiceUrl`, substituting `localhost` (which is the default), with the DNS name that you've assigned to your broker/bookie hosts. Here's an example:
 
 ```properties
-webServiceUrl=http://us-west.example.com:8080/
-brokerServiceurl=pulsar://us-west.example.com:6650/
+webServiceUrl=http://us-west.example.com:8080
+brokerServiceurl=pulsar://us-west.example.com:6650
 ```
+
+> If you don't have a DNS server, you can specify multi-host in service URL like below:
+>
+> ```properties
+> webServiceUrl=http://host1:8080,host2:8080,host3:8080
+> brokerServiceurl=pulsar://host1:6650,host2:6650,host3:6650
+> ```
 
 Once you've done that, you can publish a message to Pulsar topic:
 

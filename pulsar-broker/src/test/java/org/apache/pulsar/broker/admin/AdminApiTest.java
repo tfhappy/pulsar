@@ -26,6 +26,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -62,6 +63,7 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest;
+import org.apache.pulsar.broker.loadbalance.impl.SimpleLoadManagerImpl;
 import org.apache.pulsar.broker.namespace.NamespaceEphemeralData;
 import org.apache.pulsar.broker.namespace.NamespaceService;
 import org.apache.pulsar.broker.service.BrokerService;
@@ -140,8 +142,8 @@ public class AdminApiTest extends MockedPulsarServiceBaseTest {
     @Override
     public void setup() throws Exception {
         conf.setLoadBalancerEnabled(true);
-        conf.setBrokerServicePortTls(BROKER_PORT_TLS);
-        conf.setWebServicePortTls(BROKER_WEBSERVICE_PORT_TLS);
+        conf.setBrokerServicePortTls(Optional.of(BROKER_PORT_TLS));
+        conf.setWebServicePortTls(Optional.of(BROKER_WEBSERVICE_PORT_TLS));
         conf.setTlsCertificateFilePath(TLS_SERVER_CERT_FILE_PATH);
         conf.setTlsKeyFilePath(TLS_SERVER_KEY_FILE_PATH);
 
@@ -468,7 +470,25 @@ public class AdminApiTest extends MockedPulsarServiceBaseTest {
         } catch (Exception e) {
             assertTrue(e instanceof PreconditionFailedException);
         }
+        
+        // (4) try to update dynamic-field with special char "/" and "%"
+        String user1 = "test/test%&$*/^";
+        String user2 = "user2/password";
+        final String configValue = user1 + "," + user2;
+        admin.brokers().updateDynamicConfiguration("superUserRoles", configValue);
+        String storedValue = admin.brokers().getAllDynamicConfigurations().get("superUserRoles");
+        assertEquals(configValue, storedValue);
+        retryStrategically((test) -> pulsar.getConfiguration().getSuperUserRoles().size() == 2, 5, 200);
+        assertTrue(pulsar.getConfiguration().getSuperUserRoles().contains(user1));
+        assertTrue(pulsar.getConfiguration().getSuperUserRoles().contains(user2));
 
+        
+        admin.brokers().updateDynamicConfiguration("loadManagerClassName", SimpleLoadManagerImpl.class.getName());
+        retryStrategically((test) -> pulsar.getConfiguration().getLoadManagerClassName()
+                .equals(SimpleLoadManagerImpl.class.getName()), 150, 5);
+        assertEquals(pulsar.getConfiguration().getLoadManagerClassName(), SimpleLoadManagerImpl.class.getName());
+        admin.brokers().deleteDynamicConfiguration("loadManagerClassName");
+        assertFalse(admin.brokers().getAllDynamicConfigurations().containsKey("loadManagerClassName"));
     }
 
     /**
@@ -637,7 +657,7 @@ public class AdminApiTest extends MockedPulsarServiceBaseTest {
 
         // set default quotas on namespace
         Policies.setStorageQuota(policies, ConfigHelper.backlogQuota(conf));
-        policies.clusterDispatchRate.put("test", ConfigHelper.dispatchRate(conf));
+        policies.topicDispatchRate.put("test", ConfigHelper.topicDispatchRate(conf));
         policies.subscriptionDispatchRate.put("test", ConfigHelper.subscriptionDispatchRate(conf));
         policies.clusterSubscribeRate.put("test", ConfigHelper.subscribeRate(conf));
 
@@ -1421,7 +1441,7 @@ public class AdminApiTest extends MockedPulsarServiceBaseTest {
                 .readValue(expectedJson);
         assertEquals(r1.allowedClusters, Sets.newHashSet("test", "usw"));
         assertEquals(r1.someNewIntField, 0);
-        assertEquals(r1.someNewString, null);
+        assertNull(r1.someNewString);
     }
 
     @Test
@@ -1439,7 +1459,7 @@ public class AdminApiTest extends MockedPulsarServiceBaseTest {
 
         assertEquals(result.allowedClusters, Sets.newHashSet("test"));
         assertEquals(result.someNewIntField, 0);
-        assertEquals(result.someNewString, null);
+        assertNull(result.someNewString);
 
         admin.namespaces().deleteNamespace("prop-xyz/ns1");
         admin.tenants().deleteTenant("prop-xyz");

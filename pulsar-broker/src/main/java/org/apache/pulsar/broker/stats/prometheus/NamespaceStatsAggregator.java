@@ -18,14 +18,17 @@
  */
 package org.apache.pulsar.broker.stats.prometheus;
 
+import io.netty.util.concurrent.FastThreadLocal;
+
+import java.util.concurrent.atomic.LongAdder;
+
+import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerMBeanImpl;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.common.policies.data.ReplicatorStats;
 import org.apache.pulsar.common.util.SimpleTextOutputStream;
-
-import io.netty.util.concurrent.FastThreadLocal;
 
 public class NamespaceStatsAggregator {
 
@@ -46,9 +49,12 @@ public class NamespaceStatsAggregator {
     public static void generate(PulsarService pulsar, boolean includeTopicMetrics, boolean includeConsumerMetrics, SimpleTextOutputStream stream) {
         String cluster = pulsar.getConfiguration().getClusterName();
         AggregatedNamespaceStats namespaceStats = localNamespaceStats.get();
+        TopicStats.resetTypes();
         TopicStats topicStats = localTopicStats.get();
 
         printDefaultBrokerStats(stream, cluster);
+
+        LongAdder topicsCount = new LongAdder();
 
         pulsar.getBrokerService().getMultiLayerTopicMap().forEach((namespace, bundlesMap) -> {
             namespaceStats.reset();
@@ -58,6 +64,7 @@ public class NamespaceStatsAggregator {
                     getTopicStats(topic, topicStats, includeConsumerMetrics);
 
                     if (includeTopicMetrics) {
+                        topicsCount.add(1);
                         TopicStats.printTopicStats(stream, cluster, namespace, name, topicStats);
                     } else {
                         namespaceStats.updateStats(topicStats);
@@ -69,6 +76,8 @@ public class NamespaceStatsAggregator {
                 // Only include namespace level stats if we don't have the per-topic, otherwise we're going to report
                 // the same data twice, and it will make the aggregation difficult
                 printNamespaceStats(stream, cluster, namespace, namespaceStats);
+            } else {
+                printTopicsCountStats(stream, cluster, namespace, topicsCount);
             }
         });
     }
@@ -78,9 +87,13 @@ public class NamespaceStatsAggregator {
 
         if (topic instanceof PersistentTopic) {
             // Managed Ledger stats
-            ManagedLedgerMBeanImpl mlStats = (ManagedLedgerMBeanImpl) ((PersistentTopic) topic).getManagedLedger().getStats();
+            ManagedLedger ml = ((PersistentTopic) topic).getManagedLedger();
+            ManagedLedgerMBeanImpl mlStats = (ManagedLedgerMBeanImpl) ml.getStats();
 
             stats.storageSize = mlStats.getStoredMessagesSize();
+            stats.backlogSize = ml.getEstimatedBacklogSize();
+            stats.offloadedStorageUsed = ml.getOffloadedSize();
+            stats.backlogQuotaLimit = topic.getBacklogQuota().getLimit();
 
             stats.storageWriteLatencyBuckets.addAll(mlStats.getInternalAddEntryLatencyBuckets());
             stats.storageWriteLatencyBuckets.refresh();
@@ -113,6 +126,7 @@ public class NamespaceStatsAggregator {
             AggregatedSubscriptionStats subsStats = stats.subscriptionStats
                     .computeIfAbsent(name, k -> new AggregatedSubscriptionStats());
             subsStats.msgBacklog = subscription.getNumberOfEntriesInBacklog();
+            subsStats.msgDelayed = subscription.getNumberOfEntriesDelayed();
 
             subscription.getConsumers().forEach(consumer -> {
 
@@ -170,6 +184,11 @@ public class NamespaceStatsAggregator {
         metric(stream, cluster, "pulsar_msg_backlog", 0);
     }
 
+    private static void printTopicsCountStats(SimpleTextOutputStream stream, String cluster, String namespace,
+                                              LongAdder topicsCount) {
+        metric(stream, cluster, namespace, "pulsar_topics_count", topicsCount.sum());
+    }
+
     private static void printNamespaceStats(SimpleTextOutputStream stream, String cluster, String namespace,
                                             AggregatedNamespaceStats stats) {
         metric(stream, cluster, namespace, "pulsar_topics_count", stats.topicsCount);
@@ -183,8 +202,13 @@ public class NamespaceStatsAggregator {
         metric(stream, cluster, namespace, "pulsar_throughput_out", stats.throughputOut);
 
         metric(stream, cluster, namespace, "pulsar_storage_size", stats.storageSize);
+        metric(stream, cluster, namespace, "pulsar_storage_backlog_size", stats.backlogSize);
+        metric(stream, cluster, namespace, "pulsar_storage_offloaded_size", stats.offloadedStorageUsed);
+
         metric(stream, cluster, namespace, "pulsar_storage_write_rate", stats.storageWriteRate);
         metric(stream, cluster, namespace, "pulsar_storage_read_rate", stats.storageReadRate);
+
+        metric(stream, cluster, namespace, "pulsar_subscription_delayed", stats.msgDelayed);
 
         metricWithRemoteCluster(stream, cluster, namespace, "pulsar_msg_backlog", "local", stats.msgBacklog);
 

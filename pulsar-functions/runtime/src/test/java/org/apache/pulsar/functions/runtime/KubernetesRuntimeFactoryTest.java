@@ -35,8 +35,6 @@ import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.powermock.api.mockito.PowerMockito.doNothing;
 import static org.powermock.api.mockito.PowerMockito.spy;
 import static org.testng.Assert.assertEquals;
@@ -136,7 +134,10 @@ public class KubernetesRuntimeFactoryTest {
             "anotherrepo",
             extraDepsDir,
             null,
-            pulsarServiceUrl,
+                0,
+                1.0,
+                1.0,
+                pulsarServiceUrl,
             pulsarAdminUrl,
             stateStorageServiceUrl,
             null,
@@ -144,7 +145,7 @@ public class KubernetesRuntimeFactoryTest {
             null,
             null,
                 minResources,
-                new TestSecretProviderConfigurator()));
+                new TestSecretProviderConfigurator(), false));
         doNothing().when(factory).setupClient();
         return factory;
     }
@@ -164,8 +165,6 @@ public class KubernetesRuntimeFactoryTest {
         factory = createKubernetesRuntimeFactory(null, null);
         FunctionDetails functionDetails = createFunctionDetails();
         factory.doAdmissionChecks(functionDetails);
-        verify(factory, times(1)).setupClient();
-
     }
 
     @Test

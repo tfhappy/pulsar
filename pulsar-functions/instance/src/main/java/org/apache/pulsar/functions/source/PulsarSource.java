@@ -33,12 +33,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.impl.MultiTopicsConsumerImpl;
-import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.functions.api.Record;
 import org.apache.pulsar.common.functions.FunctionConfig;
-import org.apache.pulsar.functions.instance.InstanceUtils;
 import org.apache.pulsar.functions.utils.Reflections;
-import org.apache.pulsar.functions.utils.Utils;
 import org.apache.pulsar.io.core.PushSource;
 import org.apache.pulsar.io.core.SourceContext;
 
@@ -48,15 +45,18 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
     private final PulsarClient pulsarClient;
     private final PulsarSourceConfig pulsarSourceConfig;
     private final Map<String, String> properties;
+    private final ClassLoader functionClassLoader;
     private List<String> inputTopics;
-    private List<Consumer<T>> inputConsumers;
+    private List<Consumer<T>> inputConsumers = Collections.emptyList();
     private final TopicSchema topicSchema;
 
-    public PulsarSource(PulsarClient pulsarClient, PulsarSourceConfig pulsarConfig, Map<String, String> properties) {
+    public PulsarSource(PulsarClient pulsarClient, PulsarSourceConfig pulsarConfig, Map<String, String> properties,
+                        ClassLoader functionClassLoader) {
         this.pulsarClient = pulsarClient;
         this.pulsarSourceConfig = pulsarConfig;
         this.topicSchema = new TopicSchema(pulsarClient);
         this.properties = properties;
+        this.functionClassLoader = functionClassLoader;
     }
 
     @Override
@@ -80,6 +80,9 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
                 cb.topicsPattern(topic);
             } else {
                 cb.topic(topic);
+            }
+            if (conf.getReceiverQueueSize() != null) {
+                cb.receiverQueueSize(conf.getReceiverQueueSize());
             }
             cb.properties(properties);
 
@@ -122,6 +125,7 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
                     if (pulsarSourceConfig.getProcessingGuarantees() == FunctionConfig.ProcessingGuarantees.EFFECTIVELY_ONCE) {
                         throw new RuntimeException("Failed to process message: " + message.getMessageId());
                     }
+                    consumer.negativeAcknowledge(message);
                 })
                 .build();
 
@@ -146,7 +150,7 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
         Map<String, ConsumerConfig<T>> configs = new TreeMap<>();
 
         Class<?> typeArg = Reflections.loadClass(this.pulsarSourceConfig.getTypeClassName(),
-                Thread.currentThread().getContextClassLoader());
+                this.functionClassLoader);
 
         checkArgument(!Void.class.equals(typeArg), "Input type of Pulsar Function cannot be Void");
 
@@ -159,7 +163,7 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
                 schema = (Schema<T>) topicSchema.getSchema(topic, typeArg, conf.getSchemaType(), true);
             }
             configs.put(topic,
-                    ConsumerConfig.<T> builder().schema(schema).isRegexPattern(conf.isRegexPattern()).build());
+                    ConsumerConfig.<T> builder().schema(schema).isRegexPattern(conf.isRegexPattern()).receiverQueueSize(conf.getReceiverQueueSize()).build());
         });
 
         return configs;
@@ -174,6 +178,7 @@ public class PulsarSource<T> extends PushSource<T> implements MessageListener<T>
     private static class ConsumerConfig<T> {
         private Schema<T> schema;
         private boolean isRegexPattern;
+        private Integer receiverQueueSize;
     }
 
 }

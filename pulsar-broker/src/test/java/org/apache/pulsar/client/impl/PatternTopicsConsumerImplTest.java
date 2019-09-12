@@ -172,6 +172,7 @@ public class PatternTopicsConsumerImplTest extends ProducerConsumerBase {
             .ackTimeout(ackTimeOutMillis, TimeUnit.MILLISECONDS)
             .receiverQueueSize(4)
             .subscribe();
+        assertTrue(consumer.getTopic().startsWith(PatternMultiTopicsConsumerImpl.DUMMY_TOPIC_NAME_PREFIX));
 
         // 4. verify consumer get methods, to get right number of partitions and topics.
         assertSame(pattern, ((PatternMultiTopicsConsumerImpl<?>) consumer).getPattern());
@@ -186,7 +187,7 @@ public class PatternTopicsConsumerImplTest extends ProducerConsumerBase {
         consumers.forEach(c -> log.debug("consumer: {}", c.getTopic()));
 
         IntStream.range(0, topics.size()).forEach(index ->
-            assertTrue(topics.get(index).equals(consumers.get(index).getTopic())));
+            assertEquals(consumers.get(index).getTopic(), topics.get(index)));
 
         ((PatternMultiTopicsConsumerImpl<?>) consumer).getTopics().forEach(topic -> log.debug("getTopics topic: {}", topic));
 
@@ -276,7 +277,7 @@ public class PatternTopicsConsumerImplTest extends ProducerConsumerBase {
         consumers.forEach(c -> log.debug("consumer: {}", c.getTopic()));
 
         IntStream.range(0, topics.size()).forEach(index ->
-            assertTrue(topics.get(index).equals(consumers.get(index).getTopic())));
+            assertEquals(consumers.get(index).getTopic(), topics.get(index)));
 
         ((PatternMultiTopicsConsumerImpl<?>) consumer).getTopics().forEach(topic -> log.debug("getTopics topic: {}", topic));
 
@@ -366,7 +367,7 @@ public class PatternTopicsConsumerImplTest extends ProducerConsumerBase {
         consumers.forEach(c -> log.debug("consumer: {}", c.getTopic()));
 
         IntStream.range(0, topics.size()).forEach(index ->
-            assertTrue(topics.get(index).equals(consumers.get(index).getTopic())));
+            assertEquals(consumers.get(index).getTopic(), topics.get(index)));
 
         ((PatternMultiTopicsConsumerImpl<?>) consumer).getTopics().forEach(topic -> log.debug("getTopics topic: {}", topic));
 
@@ -451,7 +452,7 @@ public class PatternTopicsConsumerImplTest extends ProducerConsumerBase {
 
         // empty list minus: addedNames2.size = 2, addedNames3.size = 0
         List<String> addedNames4 = PatternMultiTopicsConsumerImpl.topicsListsMinus(addedNames2, addedNames3);
-        assertTrue(addedNames4.size() == addedNames2.size());
+        assertEquals(addedNames2.size(), addedNames4.size());
         addedNames4.forEach(name -> assertTrue(addedNames2.contains(name)));
 
         List<String> addedNames5 = PatternMultiTopicsConsumerImpl.topicsListsMinus(addedNames3, addedNames2);

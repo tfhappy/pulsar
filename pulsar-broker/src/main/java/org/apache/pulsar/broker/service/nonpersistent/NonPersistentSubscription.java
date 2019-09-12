@@ -18,13 +18,13 @@
  */
 package org.apache.pulsar.broker.service.nonpersistent;
 
-import com.google.common.base.MoreObjects;
-
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import com.google.common.base.MoreObjects;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
@@ -41,7 +41,6 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ConsumerStats;
 import org.apache.pulsar.common.policies.data.NonPersistentSubscriptionStats;
-import org.apache.pulsar.utils.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +49,7 @@ public class NonPersistentSubscription implements Subscription {
     private volatile NonPersistentDispatcher dispatcher;
     private final String topicName;
     private final String subName;
+    private final String fullName;
 
     private static final int FALSE = 0;
     private static final int TRUE = 1;
@@ -62,6 +62,7 @@ public class NonPersistentSubscription implements Subscription {
         this.topic = topic;
         this.topicName = topic.getName();
         this.subName = subscriptionName;
+        this.fullName = MoreObjects.toStringHelper(this).add("topic", topicName).add("name", subName).toString();
         IS_FENCED_UPDATER.set(this, FALSE);
     }
 
@@ -73,6 +74,11 @@ public class NonPersistentSubscription implements Subscription {
     @Override
     public Topic getTopic() {
         return topic;
+    }
+
+    @Override
+    public boolean isReplicated() {
+        return false;
     }
 
     @Override
@@ -104,6 +110,11 @@ public class NonPersistentSubscription implements Subscription {
                 if (dispatcher == null || dispatcher.getType() != SubType.Failover) {
                     dispatcher = new NonPersistentDispatcherSingleActiveConsumer(SubType.Failover, partitionIndex,
                             topic, this);
+                }
+                break;
+            case Key_Shared:
+                if (dispatcher == null || dispatcher.getType() != SubType.Key_Shared) {
+                    dispatcher = new NonPersistentStickyKeyDispatcherMultipleConsumers(topic, this);
                 }
                 break;
             default:
@@ -145,7 +156,7 @@ public class NonPersistentSubscription implements Subscription {
 
     @Override
     public String toString() {
-        return MoreObjects.toStringHelper(this).add("topic", topicName).add("name", subName).toString();
+        return fullName;
     }
 
     @Override
@@ -172,6 +183,8 @@ public class NonPersistentSubscription implements Subscription {
             return "Failover";
         case Shared:
             return "Shared";
+        case Key_Shared:
+            return "Key_Shared";
         }
 
         return "Null";
@@ -296,12 +309,12 @@ public class NonPersistentSubscription implements Subscription {
     }
 
     @Override
-    public CopyOnWriteArrayList<Consumer> getConsumers() {
+    public List<Consumer> getConsumers() {
         Dispatcher dispatcher = this.dispatcher;
         if (dispatcher != null) {
             return dispatcher.getConsumers();
         } else {
-            return CopyOnWriteArrayList.empty();
+            return Collections.emptyList();
         }
     }
 
@@ -325,7 +338,7 @@ public class NonPersistentSubscription implements Subscription {
         }
 
         subStats.type = getType();
-        subStats.msgDropRate = dispatcher.getMesssageDropRate().getRate();
+        subStats.msgDropRate = dispatcher.getMessageDropRate().getValueRate();
         return subStats;
     }
 

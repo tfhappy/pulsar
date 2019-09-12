@@ -183,6 +183,12 @@ void PartitionedConsumerImpl::acknowledgeCumulativeAsync(const MessageId& msgId,
     callback(ResultOperationNotSupported);
 }
 
+void PartitionedConsumerImpl::negativeAcknowledge(const MessageId& msgId) {
+    int32_t partition = msgId.partition();
+    unAckedMessageTrackerPtr_->remove(msgId);
+    consumers_[partition]->negativeAcknowledge(msgId);
+}
+
 void PartitionedConsumerImpl::start() {
     ExecutorServicePtr internalListenerExecutor = client_->getPartitionListenerExecutorProvider()->get();
     std::shared_ptr<ConsumerImpl> consumer;
@@ -359,6 +365,7 @@ void PartitionedConsumerImpl::messageReceived(Consumer consumer, const Message& 
         }
         messages_.push(msg);
         if (messageListener_) {
+            unAckedMessageTrackerPtr_->add(msg.getMessageId());
             listenerExecutor_->postWork(
                 std::bind(&PartitionedConsumerImpl::internalListener, shared_from_this(), consumer));
         }

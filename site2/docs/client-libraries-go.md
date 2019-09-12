@@ -193,7 +193,7 @@ func main() {
         producer.SendAsync(ctx, asyncMsg, func(msg pulsar.ProducerMessage, err error) {
             if err != nil { log.Fatal(err) }
 
-            fmt.Printf("Message %s succesfully published", msg.ID())
+            fmt.Printf("the %s successfully published", string(msg.Payload))
         })
     }
 }
@@ -211,7 +211,7 @@ Parameter | Description | Default
 `BlockIfQueueFull` | If set to `true`, the producer's `Send` and `SendAsync` methods will block when the outgoing message queue is full rather than failing and throwing an error (the size of that queue is dictated by the `MaxPendingMessages` parameter); if set to `false` (the default), `Send` and `SendAsync` operations will fail and throw a `ProducerQueueIsFullError` when the queue is full. | `false`
 `MessageRoutingMode` | The message routing logic (for producers on [partitioned topics](concepts-architecture-overview.md#partitioned-topics)). This logic is applied only when no key is set on messages. The available options are: round robin (`pulsar.RoundRobinDistribution`, the default), publishing all messages to a single partition (`pulsar.UseSinglePartition`), or a custom partitioning scheme (`pulsar.CustomPartition`). | `pulsar.RoundRobinDistribution`
 `HashingScheme` | The hashing function that determines the partition on which a particular message is published (partitioned topics only). The available options are: `pulsar.JavaStringHash` (the equivalent of `String.hashCode()` in Java), `pulsar.Murmur3_32Hash` (applies the [Murmur3](https://en.wikipedia.org/wiki/MurmurHash) hashing function), or `pulsar.BoostHash` (applies the hashing function from C++'s [Boost](https://www.boost.org/doc/libs/1_62_0/doc/html/hash.html) library) | `pulsar.JavaStringHash`
-`CompressionType` | The message data compression type used by the producer. The available options are [`LZ4`](https://github.com/lz4/lz4), [`ZLIB`](https://zlib.net/) and [`ZSTD`](https://facebook.github.io/zstd/). | No compression
+`CompressionType` | The message data compression type used by the producer. The available options are [`LZ4`](https://github.com/lz4/lz4), [`ZLIB`](https://zlib.net/), [`ZSTD`](https://facebook.github.io/zstd/) and [`SNAPPY`](https://google.github.io/snappy/). | No compression
 `MessageRouter` | By default, Pulsar uses a round-robin routing scheme for [partitioned topics](cookbooks-partitioned.md). The `MessageRouter` parameter enables you to specify custom routing logic via a function that takes the Pulsar message and topic metadata as an argument and returns an integer (where the ), i.e. a function signature of `func(Message, TopicMetadata) int`. |
 
 ## Consumers
@@ -262,7 +262,9 @@ Method | Description | Return type
 `Receive(context.Context)` | Receives a single message from the topic. This method blocks until a message is available. | `(Message, error)`
 `Ack(Message)` | [Acknowledges](reference-terminology.md#acknowledgment-ack) a message to the Pulsar [broker](reference-terminology.md#broker) | `error`
 `AckID(MessageID)` | [Acknowledges](reference-terminology.md#acknowledgment-ack) a message to the Pulsar [broker](reference-terminology.md#broker) by message ID | `error`
-`AckCumulative(Message)` | [Acknowledges](reference-terminology.md#acknowledgment-ack) *all* the messages in the stream, up to and including the specified message. The `AckCumulative` method will block until the ack has been sent to the broker. After that, the messages will *not* be redelivered to the consumer. Cumulative acking can only be used with a [shared](concepts-messaging.md#shared) subscription type.
+`AckCumulative(Message)` | [Acknowledges](reference-terminology.md#acknowledgment-ack) *all* the messages in the stream, up to and including the specified message. The `AckCumulative` method will block until the ack has been sent to the broker. After that, the messages will *not* be redelivered to the consumer. Cumulative acking can only be used with a [shared](concepts-messaging.md#shared) subscription type. | `error`
+`Nack(Message)` | Acknowledge the failure to process a single message. | `error`
+`NackID(MessageID)` | Acknowledge the failure to process a single message. | `error`
 `Close()` | Closes the consumer, disabling its ability to receive messages from the broker | `error`
 `RedeliverUnackedMessages()` | Redelivers *all* unacknowledged messages on the topic. In [failover](concepts-messaging.md#failover) mode, this request is ignored if the consumer isn't active on the specified topic; in [shared](concepts-messaging.md#shared) mode, redelivered messages are distributed across all consumers connected to the topic. **Note**: this is a *non-blocking* operation that doesn't throw an error. |
 
@@ -305,8 +307,15 @@ func main() {
         if err != nil { log.Fatal(err) }
 
         // Do something with the message
+        err = processMessage(msg)
 
-        consumer.Ack(msg)
+        if err == nil {
+            // Message processed successfully
+            consumer.Ack(msg)
+        } else {
+            // Failed to process messages
+            consumer.Nack(msg)
+        }
     }
 }
 ```
@@ -319,6 +328,7 @@ Parameter | Description | Default
 `SubscriptionName` | The subscription name for this consumer |
 `Name` | The name of the consumer |
 `AckTimeout` | | 0
+`NackRedeliveryDelay` | The delay after which to redeliver the messages that failed to be processed. Default is 1min. (See `Consumer.Nack()`) | 1 minute
 `SubscriptionType` | Available options are `Exclusive`, `Shared`, and `Failover` | `Exclusive`
 `MessageChannel` | The Go channel used by the consumer. Messages that arrive from the Pulsar topic(s) will be passed to this channel. |
 `ReceiverQueueSize` | Sets the size of the consumer's receiver queue, i.e. the number of messages that can be accumulated by the consumer before the application calls `Receive`. A value higher than the default of 1000 could increase consumer throughput, though at the expense of more memory utilization. | 1000

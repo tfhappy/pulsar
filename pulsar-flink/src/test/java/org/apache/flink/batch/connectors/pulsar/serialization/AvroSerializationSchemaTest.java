@@ -21,11 +21,12 @@ package org.apache.flink.batch.connectors.pulsar.serialization;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.avro.generated.NasaMission;
 import org.apache.flink.formats.avro.AvroDeserializationSchema;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.assertEquals;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 /**
  * Tests for Avro Serialization Schema
@@ -58,8 +59,8 @@ public class AvroSerializationSchemaTest {
 
         assertEquals(nasaMission.getId(), genericRecord.get("id"));
         assertEquals(nasaMission.getName(), genericRecord.get("name").toString());
-        assertEquals(null, genericRecord.get("start_year"));
-        assertEquals(null, genericRecord.get("end_year"));
+        assertNull(genericRecord.get("start_year"));
+        assertNull(genericRecord.get("end_year"));
     }
 
 }

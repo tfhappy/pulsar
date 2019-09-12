@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.client.RackChangeNotifier;
 import org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicyImpl;
@@ -102,7 +103,7 @@ public class ZkBookieRackAffinityMapping extends AbstractDNSToSwitchMapping
                 try {
                     ZooKeeper zkClient = ZooKeeperClient.newBuilder().connectString(zkServers)
                             .sessionTimeoutMs(zkTimeout).build();
-                    zkCache = new ZooKeeperCache(zkClient) {
+                    zkCache = new ZooKeeperCache(zkClient, (int) TimeUnit.MILLISECONDS.toSeconds(zkTimeout)) {
                     };
                     conf.addProperty(ZooKeeperCache.ZK_CACHE_INSTANCE, zkCache);
                 } catch (Exception e) {
@@ -152,7 +153,9 @@ public class ZkBookieRackAffinityMapping extends AbstractDNSToSwitchMapping
             // Trigger load of z-node in case it didn't exist
             Optional<BookiesRackConfiguration> racks = bookieMappingCache.get(BOOKIE_INFO_ROOT_PATH);
             if (!racks.isPresent()) {
-                return NetworkTopology.DEFAULT_RACK;
+                // since different placement policy will have different default rack,
+                // don't be smart here and just return null
+                return null;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -167,7 +170,9 @@ public class ZkBookieRackAffinityMapping extends AbstractDNSToSwitchMapping
             }
             return rack;
         } else {
-            return NetworkTopology.DEFAULT_RACK;
+            // since different placement policy will have different default rack,
+            // don't be smart here and just return null
+            return null;
         }
     }
 

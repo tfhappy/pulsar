@@ -34,7 +34,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -83,12 +82,13 @@ public abstract class ZooKeeperCache implements Watcher {
     private final OrderedExecutor executor;
     private final OrderedExecutor backgroundExecutor = OrderedExecutor.newBuilder().name("zk-cache-background").numThreads(2).build();
     private boolean shouldShutdownExecutor;
-    public static final int cacheTimeOutInSec = 30;
+    private final int zkOperationTimeoutSeconds;
 
     protected AtomicReference<ZooKeeper> zkSession = new AtomicReference<ZooKeeper>(null);
 
-    public ZooKeeperCache(ZooKeeper zkSession, OrderedExecutor executor) {
+    public ZooKeeperCache(ZooKeeper zkSession, int zkOperationTimeoutSeconds, OrderedExecutor executor) {
         checkNotNull(executor);
+        this.zkOperationTimeoutSeconds = zkOperationTimeoutSeconds;
         this.executor = executor;
         this.zkSession.set(zkSession);
         this.shouldShutdownExecutor = false;
@@ -100,8 +100,9 @@ public abstract class ZooKeeperCache implements Watcher {
         this.existsCache = CacheBuilder.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
     }
 
-    public ZooKeeperCache(ZooKeeper zkSession) {
-        this(zkSession, OrderedExecutor.newBuilder().name("zk-cache-callback-executor").build());
+    public ZooKeeperCache(ZooKeeper zkSession, int zkOperationTimeoutSeconds) {
+        this(zkSession, zkOperationTimeoutSeconds,
+                OrderedExecutor.newBuilder().name("zk-cache-callback-executor").build());
         this.shouldShutdownExecutor = true;
     }
 
@@ -178,6 +179,10 @@ public abstract class ZooKeeperCache implements Watcher {
         backgroundExecutor.execute(() -> invalidate(path));
     }
 
+    public int getZkOperationTimeoutSeconds() {
+        return zkOperationTimeoutSeconds;
+    }
+
     public void invalidate(final String path) {
         invalidateData(path);
         invalidateChildren(path);
@@ -199,12 +204,7 @@ public abstract class ZooKeeperCache implements Watcher {
 
     private boolean exists(final String path, Watcher watcher) throws KeeperException, InterruptedException {
         try {
-            return existsCache.get(path, new Callable<Boolean>() {
-                @Override
-                public Boolean call() throws Exception {
-                    return zkSession.get().exists(path, watcher) != null;
-                }
-            });
+            return existsCache.get(path, () -> zkSession.get().exists(path, watcher) != null);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof KeeperException) {
@@ -285,14 +285,14 @@ public abstract class ZooKeeperCache implements Watcher {
     public <T> Optional<Entry<T, Stat>> getData(final String path, final Watcher watcher,
             final Deserializer<T> deserializer) throws Exception {
         try {
-            return getDataAsync(path, watcher, deserializer).get(cacheTimeOutInSec, TimeUnit.SECONDS);
+            return getDataAsync(path, watcher, deserializer).get(this.zkOperationTimeoutSeconds, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             asyncInvalidate(path);
             Throwable cause = e.getCause();
             if (cause instanceof KeeperException) {
                 throw (KeeperException) cause;
             } else if (cause instanceof InterruptedException) {
-                LOG.warn("Time-out while fetching {} zk-data in {} sec", path, cacheTimeOutInSec);
+                LOG.warn("Time-out while fetching {} zk-data in {} sec", path, this.zkOperationTimeoutSeconds);
                 throw (InterruptedException) cause;
             } else if (cause instanceof RuntimeException) {
                 throw (RuntimeException) cause;
@@ -300,7 +300,7 @@ public abstract class ZooKeeperCache implements Watcher {
                 throw new RuntimeException(cause);
             }
         } catch (TimeoutException e) {
-            LOG.warn("Time-out while fetching {} zk-data in {} sec", path, cacheTimeOutInSec);
+            LOG.warn("Time-out while fetching {} zk-data in {} sec", path, this.zkOperationTimeoutSeconds);
             asyncInvalidate(path);
             throw e;
         }
@@ -381,12 +381,9 @@ public abstract class ZooKeeperCache implements Watcher {
     public Set<String> getChildren(final String path, final Watcher watcher)
             throws KeeperException, InterruptedException {
         try {
-            return childrenCache.get(path, new Callable<Set<String>>() {
-                @Override
-                public Set<String> call() throws Exception {
-                    LOG.debug("Fetching children at {}", path);
-                    return Sets.newTreeSet(checkNotNull(zkSession.get()).getChildren(path, watcher));
-                }
+            return childrenCache.get(path, () -> {
+                LOG.debug("Fetching children at {}", path);
+                return Sets.newTreeSet(checkNotNull(zkSession.get()).getChildren(path, watcher));
             });
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();

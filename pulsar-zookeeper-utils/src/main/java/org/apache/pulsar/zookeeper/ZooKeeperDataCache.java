@@ -22,14 +22,13 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.apache.pulsar.zookeeper.ZooKeeperCache.CacheUpdater;
 import org.apache.pulsar.zookeeper.ZooKeeperCache.Deserializer;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +47,7 @@ public abstract class ZooKeeperDataCache<T> implements Deserializer<T>, CacheUpd
 
     private final ZooKeeperCache cache;
     private final List<ZooKeeperCacheListener<T>> listeners = Lists.newCopyOnWriteArrayList();
+    private final int zkOperationTimeoutSeconds;
 
     private static final int FALSE = 0;
     private static final int TRUE = 1;
@@ -58,6 +58,7 @@ public abstract class ZooKeeperDataCache<T> implements Deserializer<T>, CacheUpd
 
     public ZooKeeperDataCache(final ZooKeeperCache cache) {
         this.cache = cache;
+        this.zkOperationTimeoutSeconds = cache.getZkOperationTimeoutSeconds();
     }
 
     public CompletableFuture<Optional<T>> getAsync(String path) {
@@ -91,7 +92,7 @@ public abstract class ZooKeeperDataCache<T> implements Deserializer<T>, CacheUpd
      * @throws Exception
      */
     public Optional<T> get(final String path) throws Exception {
-        return getAsync(path).get();
+        return getAsync(path).get(zkOperationTimeoutSeconds, TimeUnit.SECONDS);
     }
 
     public Optional<Entry<T, Stat>> getWithStat(final String path) throws Exception {
@@ -111,12 +112,12 @@ public abstract class ZooKeeperDataCache<T> implements Deserializer<T>, CacheUpd
 
     @Override
     public void reloadCache(final String path) {
-        try {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Reloading ZooKeeperDataCache at path {}", path);
-            }
-            cache.invalidate(path);
-            Optional<Entry<T, Stat>> cacheEntry = cache.getData(path, this, this);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Reloading ZooKeeperDataCache at path {}", path);
+        }
+        cache.invalidate(path);
+
+        cache.getDataAsync(path, this, this).thenAccept(cacheEntry -> {
             if (!cacheEntry.isPresent()) {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Node [{}] does not exist", path);
@@ -133,9 +134,10 @@ public abstract class ZooKeeperDataCache<T> implements Deserializer<T>, CacheUpd
                     LOG.debug("Notified listener {} at path {}", listener, path);
                 }
             }
-        } catch (Exception e) {
-            LOG.warn("Reloading ZooKeeperDataCache failed at path: {}", path, e);
-        }
+        }).exceptionally(ex -> {
+            LOG.warn("Reloading ZooKeeperDataCache failed at path: {}", path, ex);
+            return null;
+        });
     }
 
     @Override

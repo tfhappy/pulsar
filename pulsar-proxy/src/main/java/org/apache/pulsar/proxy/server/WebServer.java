@@ -102,11 +102,13 @@ public class WebServer {
                         config.getTlsTrustCertsFilePath(),
                         config.getTlsCertificateFilePath(),
                         config.getTlsKeyFilePath(),
-                        config.isTlsRequireTrustedClientCertOnConnect());
+                        config.isTlsRequireTrustedClientCertOnConnect(),
+                        true,
+                        config.getTlsCertRefreshCheckDurationSec());
                 ServerConnector tlsConnector = new ServerConnector(server, 1, 1, sslCtxFactory);
                 tlsConnector.setPort(config.getWebServicePortTls().get());
                 connectors.add(tlsConnector);
-            } catch (GeneralSecurityException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
@@ -125,6 +127,10 @@ public class WebServer {
     }
 
     public void addServlet(String basePath, ServletHolder servletHolder, List<Pair<String, Object>> attributes) {
+        addServlet(basePath, servletHolder, attributes, true);
+    }
+
+    public void addServlet(String basePath, ServletHolder servletHolder, List<Pair<String, Object>> attributes, boolean requireAuthentication) {
         Optional<String> existingPath = servletPaths.stream().filter(p -> p.startsWith(basePath)).findFirst();
         if (existingPath.isPresent()) {
             throw new IllegalArgumentException(
@@ -138,7 +144,7 @@ public class WebServer {
         for (Pair<String, Object> attribute : attributes) {
             context.setAttribute(attribute.getLeft(), attribute.getRight());
         }
-        if (config.isAuthenticationEnabled()) {
+        if (config.isAuthenticationEnabled() && requireAuthentication) {
             FilterHolder filter = new FilterHolder(new AuthenticationFilter(authenticationService));
             context.addFilter(filter, MATCH_ALL, EnumSet.allOf(DispatcherType.class));
         }

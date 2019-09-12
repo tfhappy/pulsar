@@ -18,15 +18,18 @@
  */
 package org.apache.pulsar.sql.presto;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
+import java.util.Properties;
 import org.apache.avro.Schema;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.common.naming.TopicName;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-
+/**
+ * A helper class containing repeatable logic used in the other classes.
+ */
 public class PulsarConnectorUtils {
 
     public static Schema parseSchema(String schemaJson) {
@@ -73,4 +76,26 @@ public class PulsarConnectorUtils {
             throw new RuntimeException("User class constructor throws exception", e);
         }
     }
+
+    public static Properties getProperties(Map<String, String> configMap) {
+        Properties properties = new Properties();
+        for (Map.Entry<String, String> entry : configMap.entrySet()) {
+            properties.setProperty(entry.getKey(), entry.getValue());
+        }
+        return properties;
+    }
+
+
+    public static String rewriteNamespaceDelimiterIfNeeded(String namespace, PulsarConnectorConfig config) {
+        return config.getNamespaceDelimiterRewriteEnable()
+                ? namespace.replace("/", config.getRewriteNamespaceDelimiter())
+                : namespace;
+    }
+
+    public static String restoreNamespaceDelimiterIfNeeded(String namespace, PulsarConnectorConfig config) {
+        return config.getNamespaceDelimiterRewriteEnable()
+                ? namespace.replace(config.getRewriteNamespaceDelimiter(), "/")
+                : namespace;
+    }
+
 }

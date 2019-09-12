@@ -22,6 +22,7 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import javax.ws.rs.core.Response.Status;
 
 import org.apache.bookkeeper.mledger.impl.ManagedCursorImpl;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
@@ -67,7 +69,6 @@ import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.ConsumerStats;
 import org.apache.pulsar.common.policies.data.FailureDomain;
 import org.apache.pulsar.common.policies.data.NamespaceIsolationData;
-import org.apache.pulsar.common.policies.data.NonPersistentTopicStats;
 import org.apache.pulsar.common.policies.data.PartitionedTopicStats;
 import org.apache.pulsar.common.policies.data.PersistencePolicies;
 import org.apache.pulsar.common.policies.data.PersistentTopicInternalStats;
@@ -133,7 +134,6 @@ public class AdminApiTest2 extends MockedPulsarServiceBaseTest {
      *
      * </pre>
      *
-     * @param topicName
      * @throws Exception
      */
     @Test
@@ -567,14 +567,14 @@ public class AdminApiTest2 extends MockedPulsarServiceBaseTest {
 
         admin.clusters().updatePeerClusterNames("us-west1", Sets.newLinkedHashSet(Lists.newArrayList("us-west2")));
         assertEquals(admin.clusters().getCluster("us-west1").getPeerClusterNames(), Lists.newArrayList("us-west2"));
-        assertEquals(admin.clusters().getCluster("us-west2").getPeerClusterNames(), null);
+        assertNull(admin.clusters().getCluster("us-west2").getPeerClusterNames());
         // update cluster with duplicate peer-clusters in the list
         admin.clusters().updatePeerClusterNames("us-west1", Sets.newLinkedHashSet(
                 Lists.newArrayList("us-west2", "us-east1", "us-west2", "us-east1", "us-west2", "us-east1")));
         assertEquals(admin.clusters().getCluster("us-west1").getPeerClusterNames(),
                 Lists.newArrayList("us-west2", "us-east1"));
         admin.clusters().updatePeerClusterNames("us-west1", null);
-        assertEquals(admin.clusters().getCluster("us-west1").getPeerClusterNames(), null);
+        assertNull(admin.clusters().getCluster("us-west1").getPeerClusterNames());
 
         // Check name validation
         try {
@@ -817,14 +817,44 @@ public class AdminApiTest2 extends MockedPulsarServiceBaseTest {
             admin.tenants().createTenant("prop xyz", tenantInfo);
             fail("Should have failed");
         } catch (PulsarAdminException e) {
-            // Expected
+            assertEquals(e.getStatusCode(), Status.PRECONDITION_FAILED.getStatusCode());
         }
 
         try {
             admin.tenants().createTenant("prop&xyz", tenantInfo);
             fail("Should have failed");
         } catch (PulsarAdminException e) {
-            // Expected
+            assertEquals(e.getStatusCode(), Status.PRECONDITION_FAILED.getStatusCode());
+        }
+    }
+
+    @Test
+    public void testTenantWithNonexistentClusters() throws Exception {
+        // Check non-existing cluster
+        assertFalse(admin.clusters().getClusters().contains("cluster-non-existing"));
+
+        Set<String> allowedClusters = Sets.newHashSet("cluster-non-existing");
+        TenantInfo tenantInfo = new TenantInfo(Sets.newHashSet("role1", "role2"), allowedClusters);
+
+        // If we try to create tenant with nonexistent clusters, it should fail immediately
+        try {
+            admin.tenants().createTenant("test-tenant", tenantInfo);
+            fail("Should have failed");
+        } catch (PulsarAdminException e) {
+            assertEquals(e.getStatusCode(), Status.PRECONDITION_FAILED.getStatusCode());
+        }
+
+        assertFalse(admin.tenants().getTenants().contains("test-tenant"));
+
+        // Check existing tenant
+        assertTrue(admin.tenants().getTenants().contains("prop-xyz"));
+
+        // If we try to update existing tenant with nonexistent clusters, it should fail immediately
+        try {
+            admin.tenants().updateTenant("prop-xyz", tenantInfo);
+            fail("Should have failed");
+        } catch (PulsarAdminException e) {
+            assertEquals(e.getStatusCode(), Status.PRECONDITION_FAILED.getStatusCode());
         }
     }
 

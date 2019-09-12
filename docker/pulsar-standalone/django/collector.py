@@ -73,7 +73,7 @@ def _fetch_broker_stats(cluster, broker_host_port, timestamp):
     active_broker.save()
 
     # Get topics stats
-    topics_stats = get(broker_url, '/admin/broker-stats/destinations')
+    topics_stats = get(broker_url, '/admin/v2/broker-stats/destinations')
 
     clusters = dict( (cluster.name, cluster) for cluster in Cluster.objects.all() )
 
@@ -258,10 +258,10 @@ def fetch_stats():
 
     futures = []
 
-    for cluster_name in get(args.serviceUrl, '/admin/clusters'):
+    for cluster_name in get(args.serviceUrl, '/admin/v2/clusters'):
         if cluster_name == 'global': continue
 
-        cluster_url = get(args.serviceUrl, '/admin/clusters/' + cluster_name)['serviceUrl']
+        cluster_url = get(args.serviceUrl, '/admin/v2/clusters/' + cluster_name)['serviceUrl']
         print 'Cluster:', cluster_name,  '->', cluster_url
         cluster, created = Cluster.objects.get_or_create(name=cluster_name)
         if cluster_url != cluster.serviceUrl:
@@ -271,7 +271,7 @@ def fetch_stats():
     # Get the list of brokers for each cluster
     for cluster in Cluster.objects.all():
         try:
-            for broker_host_port in get(cluster.serviceUrl, '/admin/brokers/' + cluster.name):
+            for broker_host_port in get(cluster.serviceUrl, '/admin/v2/brokers/' + cluster.name):
                 f = pool.apply_async(fetch_broker_stats, (cluster, broker_host_port, timestamp))
                 futures.append(f)
         except Exception as e:
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     parser.add_argument(action="store", dest="serviceUrl", help='Service URL of one cluster in the Pulsar instance')
 
     parser.add_argument('--proxy', action='store',
-                            help="Connect using a HTTP proxy", dest="proxy")
+                            help="Connect using an HTTP proxy", dest="proxy")
     parser.add_argument('--header', action="append", dest="header",
                             help='Add an additional HTTP header to all requests')
     parser.add_argument('--purge', action="store", dest="purge", type=int, default=60,

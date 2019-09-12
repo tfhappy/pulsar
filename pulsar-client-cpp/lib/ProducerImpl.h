@@ -43,6 +43,8 @@ typedef std::shared_ptr<MessageCrypto> MessageCryptoPtr;
 
 class PulsarFriend;
 
+class Producer;
+
 struct OpSendMsg {
     Message msg_;
     SendCallback sendCallback_;
@@ -62,6 +64,8 @@ class ProducerImpl : public HandlerBase,
     ProducerImpl(ClientImplPtr client, const std::string& topic,
                  const ProducerConfiguration& producerConfiguration);
     ~ProducerImpl();
+
+    int keepMaxMessageSize_;
 
     virtual const std::string& getTopic() const;
 
@@ -107,6 +111,8 @@ class ProducerImpl : public HandlerBase,
     void batchMessageTimeoutHandler(const boost::system::error_code& ec);
 
     friend class PulsarFriend;
+
+    friend class Producer;
 
     friend class BatchMessageContainer;
 

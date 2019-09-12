@@ -22,7 +22,7 @@ Installation via PyPi is available for the following Python versions:
 
 Platform | Supported Python versions
 :--------|:-------------------------
-MacOS <br /> 10.11 (El Capitan) &mdash; 10.12 (Sierra) &mdash; <br /> 10.13 (High Sierra) &mdash; 10.14 (Mojave)  | 2.7, 3.7
+MacOS <br />  10.13 (High Sierra), 10.14 (Mojave) <br /> | 2.7, 3.7
 Linux | 2.7, 3.4, 3.5, 3.6, 3.7
 
 ### Installing from source
@@ -71,8 +71,13 @@ consumer = client.subscribe('my-topic', 'my-subscription')
 
 while True:
     msg = consumer.receive()
-    print("Received message '{}' id='{}'".format(msg.data(), msg.message_id()))
-    consumer.acknowledge(msg)
+    try:
+        print("Received message '{}' id='{}'".format(msg.data(), msg.message_id()))
+        # Acknowledge successful processing of the message
+        consumer.acknowledge(msg)
+    except:
+        # Message failed to be processed
+        consumer.negative_acknowledge(msg)
 
 client.close()
 ```
@@ -88,7 +93,7 @@ msg_id = msg.message_id()
 reader = client.create_reader('my-topic', msg_id)
 
 while True:
-    msg = reader.receive()
+    msg = reader.read_next()
     print("Received message '{}' id='{}'".format(msg.data(), msg.message_id()))
     # No acknowledgment
 ```
@@ -147,8 +152,13 @@ consumer = client.subscribe(
 while True:
     msg = consumer.receive()
     ex = msg.value()
-    print("Received message a={} b={} c={}".format(ex.a, ex.b, ex.c))
-    consumer.acknowledge(msg)
+    try:
+        print("Received message a={} b={} c={}".format(ex.a, ex.b, ex.c))
+        # Acknowledge successful processing of the message
+        consumer.acknowledge(msg)
+    except:
+        # Message failed to be processed
+        consumer.negative_acknowledge(msg)
 ```
 
 ### Supported schema types

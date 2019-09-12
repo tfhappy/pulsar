@@ -1,6 +1,6 @@
 {
   "docs": {
-    "Getting started": [
+    "Get started": [
       "pulsar-2.0",
       "standalone",
       "standalone-docker",
@@ -18,22 +18,33 @@
       "concepts-tiered-storage",
       "concepts-schema-registry"
     ],
+    "Pulsar Schema": [
+      "schema-get-started",
+      "schema-understand",
+      "schema-evolution-compatibility",
+      "schema-manage"
+    ],
     "Pulsar Functions": [
       "functions-overview",
-      "functions-quickstart",
-      "functions-api",
-      "functions-deploying",
-      "functions-guarantees",
-      "functions-state",
-      "functions-metrics"
+      "functions-worker",
+      "functions-runtime",
+      "functions-develop",
+      "functions-debug",
+      "functions-deploy",
+      "functions-configure",
+      "functions-monitor",
+      "functions-secure",
+      "functions-troubleshoot",
+      "functions-cli"
     ],
     "Pulsar IO": [
       "io-overview",
       "io-quickstart",
-      "io-managing",
+      "io-use",
+      "io-debug",
       "io-connectors",
-      "io-develop",
-      "io-cdc"
+      "io-cdc",
+      "io-develop"
     ],
     "Pulsar SQL": [
       "sql-overview",
@@ -53,8 +64,9 @@
       "administration-geo",
       "administration-dashboard",
       "administration-stats",
-      "administration-load-distribution",
-      "administration-proxy"
+      "administration-load-balance",
+      "administration-proxy",
+      "administration-upgrade"
     ],
     "Security": [
       "security-overview",
@@ -63,6 +75,7 @@
       "security-token-client",
       "security-token-admin",
       "security-athenz",
+      "security-kerberos",
       "security-authorization",
       "security-encryption",
       "security-extending"
@@ -113,7 +126,9 @@
       "reference-terminology",
       "reference-cli-tools",
       "pulsar-admin",
-      "reference-configuration"
+      "reference-connector-admin",
+      "reference-configuration",
+      "reference-metrics"
     ]
   },
   "docs-other": {

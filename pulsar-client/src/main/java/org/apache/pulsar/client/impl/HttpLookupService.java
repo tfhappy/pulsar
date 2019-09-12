@@ -24,7 +24,9 @@ import io.netty.channel.EventLoopGroup;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -38,9 +40,9 @@ import org.apache.pulsar.common.lookup.data.LookupData;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.pulsar.common.schema.GetSchemaResponse;
+import org.apache.pulsar.common.protocol.schema.GetSchemaResponse;
 import org.apache.pulsar.common.schema.SchemaInfo;
-import org.apache.pulsar.common.schema.SchemaInfoUtil;
+import org.apache.pulsar.common.protocol.schema.SchemaInfoUtil;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,18 +138,30 @@ class HttpLookupService implements LookupService {
 
     @Override
     public CompletableFuture<Optional<SchemaInfo>> getSchema(TopicName topicName) {
+        return getSchema(topicName, null);
+    }
+
+    @Override
+    public CompletableFuture<Optional<SchemaInfo>> getSchema(TopicName topicName, byte[] version) {
         CompletableFuture<Optional<SchemaInfo>> future = new CompletableFuture<>();
 
         String schemaName = topicName.getSchemaName();
         String path = String.format("admin/v2/schemas/%s/schema", schemaName);
-
+        if (version != null) {
+            path = String.format("admin/v2/schemas/%s/schema/%s",
+                    schemaName,
+                    new String(version, StandardCharsets.UTF_8));
+        }
         httpClient.get(path, GetSchemaResponse.class).thenAccept(response -> {
             future.complete(Optional.of(SchemaInfoUtil.newSchemaInfo(schemaName, response)));
         }).exceptionally(ex -> {
             if (ex.getCause() instanceof NotFoundException) {
                 future.complete(Optional.empty());
             } else {
-                log.warn("Failed to get schema for topic {} : {}", topicName, ex.getCause().getClass());
+                log.warn("Failed to get schema for topic {} version {}",
+                        topicName,
+                        version != null ? Base64.getEncoder().encodeToString(version) : null,
+                        ex.getCause());
                 future.completeExceptionally(ex);
             }
             return null;

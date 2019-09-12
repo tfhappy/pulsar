@@ -26,6 +26,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -139,8 +140,8 @@ public class V1_AdminApiTest extends MockedPulsarServiceBaseTest {
     @Override
     public void setup() throws Exception {
         conf.setLoadBalancerEnabled(true);
-        conf.setBrokerServicePortTls(BROKER_PORT_TLS);
-        conf.setWebServicePortTls(BROKER_WEBSERVICE_PORT_TLS);
+        conf.setBrokerServicePortTls(Optional.of(BROKER_PORT_TLS));
+        conf.setWebServicePortTls(Optional.of(BROKER_WEBSERVICE_PORT_TLS));
         conf.setTlsCertificateFilePath(TLS_SERVER_CERT_FILE_PATH);
         conf.setTlsKeyFilePath(TLS_SERVER_KEY_FILE_PATH);
 
@@ -632,7 +633,7 @@ public class V1_AdminApiTest extends MockedPulsarServiceBaseTest {
 
         // set default quotas on namespace
         Policies.setStorageQuota(policies, ConfigHelper.backlogQuota(conf));
-        policies.clusterDispatchRate.put("test", ConfigHelper.dispatchRate(conf));
+        policies.topicDispatchRate.put("test", ConfigHelper.topicDispatchRate(conf));
         policies.subscriptionDispatchRate.put("test", ConfigHelper.subscriptionDispatchRate(conf));
         policies.clusterSubscribeRate.put("test", ConfigHelper.subscribeRate(conf));
 
@@ -1416,7 +1417,7 @@ public class V1_AdminApiTest extends MockedPulsarServiceBaseTest {
                 .readValue(expectedJson);
         assertEquals(r1.allowedClusters, Sets.newHashSet("use", "usw"));
         assertEquals(r1.someNewIntField, 0);
-        assertEquals(r1.someNewString, null);
+        assertNull(r1.someNewString);
     }
 
     @Test
@@ -1434,7 +1435,7 @@ public class V1_AdminApiTest extends MockedPulsarServiceBaseTest {
 
         assertEquals(result.allowedClusters, Sets.newHashSet("use"));
         assertEquals(result.someNewIntField, 0);
-        assertEquals(result.someNewString, null);
+        assertNull(result.someNewString);
 
         admin.namespaces().deleteNamespace("prop-xyz/use/ns1");
         admin.tenants().deleteTenant("prop-xyz");
